@@ -1,0 +1,15 @@
+import { launch, startPreview } from './lib/browser.mjs';
+const srv = await startPreview();
+const browser = await launch();
+const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
+const logs = [];
+page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
+page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
+await page.goto(srv.url + '?perf=1', { waitUntil: 'load' });
+await page.waitForTimeout(2500);
+const info = await page.evaluate(() => ({ gl2: !!document.createElement('canvas').getContext('webgl2'), tier: window.__jaipur?.tier, stats: window.__jaipur?.perf.lastInfo }));
+console.log(JSON.stringify(info));
+await page.screenshot({ path: 'shots-tmp/smoke.png' });
+console.log(logs.join('\n'));
+await browser.close();
+srv.stop();

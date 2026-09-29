@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Real-time 3D Jaipur: the Walled City, Hawa Mahal, Jantar Mantar, Jal Mahal and the Aravalli forts, built from OpenStreetMap data." />
+  <title>Jaipur 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23111%27/%3E%3Cpath d=%27M6 26V14l4-4 3 3 3-6 3 6 3-3 4 4v12z%27 fill=%27%23e8b4a0%27/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="c" tabindex="0"></canvas>
+  <div id="boot"><div class="boot-title">JAIPUR&nbsp;3D</div><div class="boot-msg" id="boot-msg">starting…</div></div>
+  <div id="ui"></div>
+  <div id="notice" hidden></div>
+  <div id="credit">Map data © OpenStreetMap contributors · Terrain: Mapzen Terrarium (SRTM et al.)</div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

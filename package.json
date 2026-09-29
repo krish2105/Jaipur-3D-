@@ -1,0 +1,26 @@
+{
+  "name": "jaipur-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Real-time 3D Jaipur (Walled City) in the browser. Static Vite site.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "bake:terrain": "node scripts/bake-terrain.mjs",
+    "fetch:osm": "node scripts/fetch-osm.mjs",
+    "bake:osm": "node scripts/bake-osm.mjs",
+    "check:data": "node scripts/check-data-budget.mjs",
+    "check:budgets": "node scripts/check-budgets.mjs",
+    "shots": "node scripts/screenshots.mjs",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1",
+    "vite": "^8.3.1"
+  }
+}

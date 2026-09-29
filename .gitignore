@@ -1,5 +1,12 @@
-   node_modules/
-   dist/
-   .env
-   .DS_Store
-   *.log
+node_modules/
+dist/
+.env
+.env.*
+.DS_Store
+*.log
+.vercel/
+# raw downloads never go in git (only baked, chunked output under public/data)
+data-raw/
+.cache/
+test-results/
+shots-tmp/
