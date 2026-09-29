@@ -11,6 +11,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "bake:terrain": "node scripts/bake-terrain.mjs",
     "fetch:osm": "node scripts/fetch-osm.mjs",
+    "fetch:overture": "node scripts/fetch-overture.mjs",
     "bake:osm": "node scripts/bake-osm.mjs",
     "check:data": "node scripts/check-data-budget.mjs",
     "check:budgets": "node scripts/check-budgets.mjs",

@@ -2,7 +2,8 @@
 // The numbers are GPU-independent (renderer.info of a rendered frame, estimated texture bytes, instance counts), so this gate means
 // the same thing on a laptop GPU and in a software-rendering sandbox. Each tier is driven to its WORST representative views
 // (dense street level, high drone over the centre, a landmark close-up) and the maximum per metric is compared with the budget.
-// Usage: node scripts/check-budgets.mjs [--tier low,medium,high] [--json out.json]   (build first: npm run build)
+// Usage: node scripts/check-budgets.mjs [--tier low,medium,high] [--view street-diwali,drone-high] [--by] [--json out.json]   (build first: npm run build)
+// --view runs only the named views (a partial run is for tuning, the gate is the full run); --by prints the instance counts per mesh for every view
 import { writeFileSync } from 'node:fs';
 import { TIERS, TIER_ORDER } from '../src/core/budgets.js';
 import { openSession } from './lib/session.mjs';
@@ -10,6 +11,7 @@ import { SPOT_JS } from './lib/festival-spot.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, v, i, arr) => (v.startsWith('--') ? [...a, [v.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : '1']] : a), []));
 const tiers = args.tier ? args.tier.split(',') : TIER_ORDER;
+const onlyViews = args.view ? args.view.split(',') : null;
 // world metres: x east, z south, origin Badi Chaupar. [label, eye(x,z), look(x,z), eyeHeightAboveGround, fov]
 const VIEWS = [
   ['street-johari', [-40, 300], [-40, 520], 2.5, 62],
@@ -37,7 +39,7 @@ for (const tier of tiers) {
   try {
     const worst = { drawCalls: 0, triangles: 0, geometries: 0, textureMB: 0, instances: 0 };
     let detail = null;
-    for (const view of VIEWS) {
+    for (const view of VIEWS.filter((v) => !onlyViews || onlyViews.includes(v[0]))) {
       const [label, eye, look, eh, fov, wx = null, opts = null] = view;
       const res = await sess.page.evaluate(async ([eye, look, eh, fov, wx, opts, spotJs]) => {
         const a = window.__jaipur;
@@ -77,6 +79,7 @@ for (const tier of tiers) {
       }, [eye, look, eh, fov, wx, opts, SPOT_JS]);
       for (const k of Object.keys(worst)) worst[k] = Math.max(worst[k], res[k]);
       if (!detail || res.textureMB > detail.textureMB) detail = res;
+      if (args.by) console.log(`     instances: ${JSON.stringify(res.instancesBy)}`);
       console.log(`  ${tier.padEnd(6)} ${label.padEnd(20)} draws ${String(res.drawCalls).padStart(4)}  tris ${(res.triangles / 1e6).toFixed(2)}M  geo ${String(res.geometries).padStart(3)}  tex ${res.textureMB} MB  inst ${res.instances}`);
     }
     const budget = TIERS[tier].budget;

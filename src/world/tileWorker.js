@@ -52,16 +52,18 @@ self.onmessage = (e) => {
   }
   if (m.type === 'tile') {
     const t0 = performance.now();
-    const out = { type: 'tile', key: m.key, detail: m.detail, ix: m.ix, iz: m.iz };
+    const out = { type: 'tile', key: m.key, detail: m.detail, ov: m.ov !== false, ix: m.ix, iz: m.iz };
     try {
       if (m.b && exclude) {
         const ox0 = m.b.t[0] * TILE, oz0 = m.b.t[1] * TILE;
         m.b = { ...m.b, b: m.b.b.filter((rec) => !isExcludedFull(rec, ox0, oz0, exclude)) };
       }
+      // Overture filler footprints only inside the tier's overtureRadius; beyond it the tile is OSM-only (as before Phase 13)
+      if (m.b && m.ov === false) m.b = { ...m.b, b: m.b.b.filter((rec) => !rec.o) };
       if (m.b && m.b.b.length) {
         const rcs = (m.roads || []).map((rc) => rc && { ...rc, __dx: (rc.t[0] - m.ix) * TILE, __dz: (rc.t[1] - m.iz) * TILE });
         const roads = roadIndexFrom(rcs);
-        const g = buildTileGeometry(m.b, { detail: m.detail, roads, ground: groundFor(m.b) });
+        const g = buildTileGeometry(m.b, { detail: m.detail, ovPlain: !!m.ovPlain, roads, ground: groundFor(m.b) });
         out.bld = g;
       }
       const own = (m.roads || []).find((r) => r && r.t[0] === m.ix && r.t[1] === m.iz);

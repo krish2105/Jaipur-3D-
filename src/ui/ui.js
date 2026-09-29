@@ -86,7 +86,7 @@ export class UI {
         h('p', {}, 'W A S D / arrows move · E or Space up · Q or C down · Shift fast · Ctrl slow · drag to look · wheel = speed'),
         h('p', {}, 'T tour · F fly · G walk · 1-5 weather · [ ] time · M sound · P stats · H this help · Esc close'),
         h('p', {}, 'Touch: left third = move stick, elsewhere = look, ▲ ▼ buttons for height'),
-        h('p', { class: 'dim' }, 'Map data © OpenStreetMap contributors (ODbL). Terrain Tiles by Mapzen/Tilezen — SRTM (NASA), 3DEP (USGS), GMTED2010 (USGS), ETOPO1 (NOAA), and other sources. Street lamps, decorations, sounds and the tour are art direction, not survey data (see the README).')));
+        h('p', { class: 'dim' }, 'Map data © OpenStreetMap contributors (ODbL). Building footprints also © Overture Maps Foundation (ODbL; Google Open Buildings, CC BY 4.0, and Microsoft ML Building Footprints). Terrain Tiles by Mapzen/Tilezen — SRTM (NASA), 3DEP (USGS), GMTED2010 (USGS), ETOPO1 (NOAA), and other sources. Street lamps, decorations, sounds and the tour are art direction, not survey data (see the README).')));
     this.touch = h('div', { id: 'touch' },
       h('div', { class: 'ring' }, h('div', { class: 'knob' })),
       h('button', { type: 'button', class: 'hold up', 'aria-label': 'up', onpointerdown: (e) => { e.preventDefault(); app.rig.setHold('up', true); }, onpointerup: () => app.rig.setHold('up', false), onpointercancel: () => app.rig.setHold('up', false), onpointerleave: () => app.rig.setHold('up', false) }, '▲'),

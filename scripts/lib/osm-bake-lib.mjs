@@ -354,7 +354,8 @@ export function chunkBuildings(bldgs, { simplifyTol = 0.15, minArea = 6 } = {}) 
     let t = tiles.get(k);
     if (!t) tiles.set(k, (t = { t: [ix, iz], s: TILE, b: [] }));
     const ox = ix * TILE, oz = iz * TILE;
-    const outer = simplifyRing(b.outer, simplifyTol);
+    const tol = b.simplify ?? simplifyTol; // Overture (ML-traced) outlines are simplified harder than hand-mapped OSM ones
+    const outer = simplifyRing(b.outer, tol);
     const rec = {
       i: b.id,
       h: b.h,
@@ -365,11 +366,12 @@ export function chunkBuildings(bldgs, { simplifyTol = 0.15, minArea = 6 } = {}) 
     if (b.minH) rec.m = Math.round(b.minH * 10) / 10;
     if (b.levels) rec.l = b.levels;
     if (b.roof !== 'f') rec.r = b.roof;
-    if (b.holes.length) rec.q = b.holes.map((h) => encRing(simplifyRing(h, simplifyTol), ox, oz));
+    if (b.holes.length) rec.q = b.holes.map((h) => encRing(simplifyRing(h, tol), ox, oz));
     if (b.name) rec.n = b.name;
     if (b.colour) rec.c = b.colour;
     if (b.part) rec.pt = 1;
     if (b.wall) rec.wl = 1;
+    if (b.ov) rec.o = 1; // footprint from Overture Maps (not OSM)
     if (b.tags.wikidata) rec.w = b.tags.wikidata;
     t.b.push(rec);
   }

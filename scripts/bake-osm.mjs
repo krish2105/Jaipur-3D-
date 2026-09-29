@@ -20,6 +20,7 @@ import { centroid } from './lib/osm-bake-lib.mjs';
 
 
 const RAW = path.join(RAW_DIR, 'osm');
+const RAW_OVERTURE = path.join(RAW_DIR, 'overture');
 const OUT = path.resolve(process.env.OSM_OUT || 'public/data/osm');
 
 export async function loadElements(dir) {
@@ -40,6 +41,16 @@ export async function loadElements(dir) {
   return { elements: [...byKey.values()], zoneOf, osmBase, files: files.length };
 }
 
+/** Overture footprints from `npm run fetch:overture` (non-OSM buildings only), or null when not fetched: the bake then stays OSM-only. */
+export async function loadOverture(dir = RAW_OVERTURE) {
+  const f = path.join(dir, 'buildings.jsonl');
+  if (!existsSync(f)) return null;
+  const lines = (await readFile(f, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  let meta = null;
+  try { meta = JSON.parse(await readFile(path.join(dir, 'meta.json'), 'utf8')); } catch { /* optional */ }
+  return { lines, meta };
+}
+
 /** grid covering every fetch zone (projected, +150 m margin), aligned to whole texels */
 function coverGrid(texel = 10) {
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
@@ -56,14 +67,16 @@ function inBBox(x, z, bbox) {
   return x >= Math.min(a.x, b.x) && x <= Math.max(a.x, b.x) && z >= Math.min(a.z, b.z) && z <= Math.max(a.z, b.z);
 }
 
-export async function bake({ rawDir = RAW, outDir = OUT, quiet = false } = {}) {
+export async function bake({ rawDir = RAW, outDir = OUT, quiet = false, overtureDir = RAW_OVERTURE } = {}) {
   const loaded = await loadElements(rawDir);
   if (!loaded) {
     throw Object.assign(new Error(`No raw OSM data in ${rawDir}. Run "npm run fetch:osm" first (needs overpass-api.de to be reachable). Nothing was baked; no data is fabricated.`), { code: 'NO_RAW' });
   }
   const log = quiet ? () => {} : console.log;
   log(`loaded ${loaded.elements.length} unique OSM elements from ${loaded.files} file(s)`);
-  const { files, manifest } = bakeElements(loaded.elements, { osmBase: loaded.osmBase, log });
+  const overture = await loadOverture(overtureDir);
+  log(overture ? `overture: ${overture.lines.length} non-OSM footprints (release ${overture.meta?.release ?? '?'})` : 'overture: no data-raw/overture/buildings.jsonl, baking OSM only (run "npm run fetch:overture" to add the extra footprints)');
+  const { files, manifest } = bakeElements(loaded.elements, { osmBase: loaded.osmBase, log, overture });
   // land cover raster over the union of the fetch zones (10 m texels), raw RGBA: R built-up, G vegetation, B water, A parks
   const grid = coverGrid();
   const polys = extractLandcover(loaded.elements);

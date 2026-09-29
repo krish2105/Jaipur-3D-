@@ -18,16 +18,13 @@ Living log. A resumed session should read this first.
 | 10 | Cinematic tour, free-fly, touch, compact UI | **done** (5-shot tour on real anchors, fly / walk, keyboard + mouse + touch stick, compact monochrome dock; measured in Chrome incl. a touch phone, see Phase 10 notes) |
 | 11 | Verification loop, budgets, fixes | **done** (fixed-seed matrix of 56 images, real-GPU profiling and fixes, reviewer pass; see Phase 11 notes) |
 | 12 | README, final push | **done** (README with architecture, data pipeline, controls, screenshots, budgets, licensing, honest limitations) |
+| 13 | Overture Maps footprints ("make it real" step 1) | **done** (46,505 real non-OSM footprints merged into the core zone, per-tier radius + lean geometry to stay in budget, attribution, tests; see Phase 13 notes) |
+| 14-18 | Bazaar frontage, Hawa Mahal rebuild, people, Amer / Jantar Mantar / Tripolia / Jal Mahal, photo re-review | not started (owner asked for them on 2026-09-30; order in the Phase 13 notes) |
 
-## DECISION NEEDED (owner): OSM has no buildings for most of the Walled City's bazaar blocks
+## RESOLVED (owner, 2026-09-30): OSM has no buildings for most of the Walled City's bazaar blocks
 
-Measured on the real baked data (`node scripts/coverage-map.mjs` writes `shots-tmp/coverage.png`): the Walled City street grid and roads are mapped completely, but **building footprints are mapped only in strips**
-(Tripolia / Chandpole / parts of Badi Chaupar); whole blocks between the bazaars, including most of Johari Bazaar, have **no buildings in OSM at all** (9,734 buildings for the ~7 km x 7 km baked area, of which 99 % have inferred heights).
-The renderer shows exactly what OSM contains, so street-level views of Johari Bazaar show an empty plain instead of a continuous wall of shopfronts.
-Per the project rules nothing is invented or "filled in". Options (none has been done):
-1. Keep OSM-only (current). Honest, sparse.
-2. Allow one additional **real** footprint source for the missing blocks (e.g. Overture Maps buildings, which merge Microsoft/Google imagery-derived footprints with OSM; open licences, needs attribution). Real footprints, no real heights (heights stay inferred).
-3. Procedural infill of blank blocks. Fabricated by definition; only with explicit permission.
+Measured on the real baked data (`node scripts/coverage-map.mjs`): the Walled City street grid is mapped completely, but OSM has **building footprints only in strips**; whole blocks, including most of Johari Bazaar, were empty (9,734 buildings for the ~7 km x 7 km baked area).
+The owner asked for option 2 ("make real clone ... Overture footprints for building coverage") and it is done in Phase 13: real Overture footprints (ODbL) fill the core zone; nothing is procedurally invented (option 3 was not used). Heights stay inferred (Overture has none for these rows).
 
 ## Decisions
 
@@ -136,6 +133,17 @@ Per the project rules nothing is invented or "filled in". Options (none has been
 - README rewritten (screenshots, controls, architecture, data pipeline, tier budgets and measured numbers, verification commands, real vs approximate data, licensing, limitations). The in-app footer now carries the full Mapzen / Tilezen credit on wide screens and a short form on phones, centred under the dock so it is never covered (checked by `check:ui`); the full text is also in the help sheet.
 - **Open owner decisions**: (1) building coverage (options above), (2) a licence for this repo's code (none chosen: all rights reserved by default), (3) ~~permission to download real reference photographs~~ (given; done, see "Photo review").
 
+## Phase 13 notes (Overture footprints)
+
+- **Source and licence**: Overture Maps buildings theme, release 2026-09-23.1 (STAC catalog https://stac.overturemaps.org, GeoParquet on `s3://overturemaps-us-west-2`), ODbL-1.0; the footprints that are not OSM come from Google Open Buildings (CC BY 4.0) and Microsoft ML Buildings (ODbL). Attribution wording taken from https://docs.overturemaps.org/attribution/. Added to the footer (long and short form), the help sheet, README and `manifest.attribution`.
+- **Fetch** (`npm run fetch:overture`, dev-only, needs `python3 -m pip install duckdb`): only the core zone (Walled City + margin, 26.905-26.941 N, 75.807-75.847 E) and only the two parquet files whose bbox overlaps it (a scan of the whole hive glob hung for 10+ minutes; the STAC item boxes avoid that). It keeps rows whose sources do **not** include OpenStreetMap, so OSM stays the primary source: 52,992 Overture buildings in the zone, 4,702 of them OSM, **48,290 kept** (45,308 Google, 2,982 Microsoft). None of the 48,290 has a height, floor count, class, roof shape or name.
+- **Merge** (`scripts/lib/overture-merge.mjs`, wired into `bakeElements`): GeoJSON -> world metres, outer CCW / holes CW; dropped when >= 20 % of interior sample points lie inside an OSM footprint (24), when >= 30 % lie inside a carriageway (footways, paths, steps, bridges and tunnels excluded; 1,759), or when under 10 m2 (0). **46,505 kept**; chunk flag `o: 1`; simplified at 0.45 m instead of 0.15 m; ids `o<fnv1a(GERS id)>`; manifest `counts.buildingsOverture`, `manifest.overture` (release, drop stats). Deterministic (tested). The bake stays OSM-only when `data-raw/overture/` is absent.
+- **Data size**: 11.9 MB total (limit 31 MB). 9,734 -> 56,239 buildings; 99.8 % of the heights are inferred (`s: 2`).
+- **Budgets (decision, recorded here)**: the first bake blew every tier (Low 2.4 M / 1.0 M, Medium 6.3 M / 3.2 M, High 13.7 M / 5.5 M triangles) because each detail-tile building costs ~69 triangles and is drawn again in every shadow cascade and the wet-street mirror. **No budget was raised.** What changed instead: Overture footprints are `lite` (no rooftop mumty box, cornice only on street-facing walls, 40 % get a 6-segment tank; ~38 triangles), only exist within `overtureRadius` of the camera (Low 900 m / Medium 800 m / High 1,200 m; tile-based, upgrade-only so tiles never thrash), Low draws them as bare extrusions (`overturePlain`, 10 triangles); oriel instances (the largest single item: 243 triangles x up to 5,400) got a leaner mesh (133 triangles) with hidden faces removed, stopped casting shadows and are left out of the planar reflection; the Hawa Mahal window instances stopped casting shadows; the Medium oriel pool is 2,300 (was 2,700) so the Diwali street stays under the 15,000-instance budget. Final worst-case numbers: Low 0.89 M of 1.0 M, Medium 2.68 M of 3.2 M (14,862 of 15,000 instances), High 5.33 M of 5.5 M.
+- **Not done / trade-offs**: per-tile sub-meshes (finer frustum culling) would have helped but cost geometry count (High is at 343 of 400). Beyond the radius the city is OSM-only, so the far Aravalli-side view still shows the sparse fabric. The Low tier shows Overture footprints only as bare boxes. ML-traced outlines merge lanes and courtyards sometimes.
+- **Look** (screenshots of the new bake, High tier): continuous 2-4 storey frontage on both sides of Johari Bazaar, a dense roofscape from the drone with tanks on some roofs, the Walled City street grid no longer an empty plain. The frontage is still generic: no pillars, signboards, awnings, wires (next).
+- **Order of the remaining "make it real" phases** (owner list of 2026-09-30, code-first, no Blender / Unreal needed): 14 bazaar frontage and street furniture; 15 Hawa Mahal rebuild (9 oriel bays per row, wings, plaza); 16 denser people and motorbikes; 17 Amer terraces, Jantar Mantar masonry, Tripolia gate, Jal Mahal colour (after a neutral-light photo check); 18 photo re-review.
+
 ## Photo review (real photographs, owner-approved)
 
 - **What was done**: 16 CC0 / CC BY / CC BY-SA photographs of Jaipur were downloaded from Wikimedia Commons into a scratch folder outside the repo (credits and licences in `docs/REFERENCE_PHOTOS.md`; the images are not committed). A separate reviewer subagent opened all of them and 17 of our screenshots plus 6 new matching views (Jal Mahal, Amer, Jantar Mantar) and compared like for like. No photo of Jaipur kites, a Diwali market or a monsoon street could be found on Commons, so those scenes have no photographic reference. Three files did not show what their names say (hawa-street is a rotated portrait, pink-city-general is a street-level Johari Bazaar view, badi-chaupar shows Hawa Mahal across the road), so the "overall city" comparison could only judge colour.
@@ -157,7 +165,7 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 
 ## Known shortfalls (honest)
 
-- OSM building coverage gap (above). Heights: 99 % inferred.
+- Building coverage: OSM + 46k Overture footprints inside the tier radius (Phase 13); beyond it OSM only. Heights: 99.8 % inferred. The frontage is plain massing (no pillars / signboards / awnings / wires yet). Overture outlines are ML-traced and approximate.
 - Hawa Mahal is a stylised pyramid: better than the first version (slim octagonal corner bays, projecting oriel units with white arch frames, per-window tint) but not a photographic facade; its rear block and the Saraogi block around it are approximations.
 - Jantar Mantar: only the 5 instruments OSM maps are placed; Jai Prakash, Laghu Samrat etc. are absent because their positions are not in any opened source.
 - Chandra Mahal / Mubarak Mahal / gatehouse proportions and storey heights are *approx* (footprints are real).
@@ -167,14 +175,14 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 - Other wall kinds (`barrier=wall`, fences, retaining walls) and OSM `water`/`green` polygons from the `m_*` chunks are not rendered as geometry (water and green are in the land-cover raster).
 - Lamps: OSM has almost no `street_lamp` nodes in the area (0 instances), so night street lighting cannot come from OSM lamps; Phase 8 will use the street graph.
 - Facade shader `c` (building colour) is baked but not used by the shader.
-- Budget headroom: the **low tier is at 0.99 M of its 1.00 M triangle budget** (`npm run check:budgets`); any new geometry needs a cheaper far-LOD for that tier first. Medium is at 2.46 M / 2.80 M.
+- Budget headroom (`npm run check:budgets`, Phase 13): Low 0.89 M of 1.00 M, Medium 2.68 M of 3.20 M (instances 14,862 of 15,000), **High 5.33 M of 5.50 M**: the worst view everywhere is the monsoon drone (mirror + shadows + rain). New geometry (Hawa Mahal rebuild, facade upgrade, more people) needs its own LOD or a smaller `overtureRadius` first.
 - WebGPU is not used (WebGL2 only). Real-GPU frame rates were first measured in Phase 7 (M4 Pro only; phones and mid-range GPUs are untested, see Phase 7 notes).
 
 - Weather: rain has no audio yet (Phase 9); planar reflection only mirrors roads (terrain plazas just darken); lightning illumination is one directional light; moving dust sprites are subtle next to the fog; cloud edges are still grainy at the low/medium step counts; rain does not stop under roofs.
 
 ## Resume checklist
 
-1. Owner decision on the building-coverage options above.
+1. (Building coverage: done in Phase 13.) Next: Phase 14 onward, see Phase 13 notes.
 2. (Phase 7 done.)
 4. (Phase 8 done.) 5. (Phase 9 done.) 6. (Phase 10 done.)
 7. (Phase 11 done.) 8. (Phase 12 done.) Remaining: owner decisions listed under Phase 12 notes; phone measurements; photo-based review.

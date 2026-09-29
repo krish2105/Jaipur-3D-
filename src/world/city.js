@@ -72,7 +72,8 @@ export class City {
     this.propMat = propMat;
     const s = this.settings;
     this.pools = {
-      jharokha: new InstancePool(makeJharokhaGeometry(), propMat, Math.max(500, s.vehicles * 6), { name: 'jharokha' }),
+      // oriels are ~1.5 m: they do not cast a shadow worth a second (and third, fourth) pass over every instance
+      jharokha: new InstancePool(makeJharokhaGeometry(), propMat, s.jharokhaPool ?? Math.max(500, s.vehicles * 6), { name: 'jharokha', castShadow: false }),
       chhatri: new InstancePool(makeChhatriGeometry(), propMat, 400, { name: 'chhatri' }),
       lamp: new InstancePool(makeLampPostGeometry(), propMat, 1500, { name: 'lamps' }),
       tree: new InstancePool(makeTreeGeometry(), propMat, 2500, { name: 'trees', castShadow: false }),
@@ -126,7 +127,7 @@ export class City {
         const dx = Math.max(ix * c - cam.x, 0, cam.x - (ix + 1) * c);
         const dz = Math.max(iz * c - cam.z, 0, cam.z - (iz + 1) * c);
         const d = Math.hypot(dx, dz);
-        if (d <= R) want.set(key, { ix, iz, d, detail: d <= S.tileRadius });
+        if (d <= R) want.set(key, { ix, iz, d, detail: d <= S.tileRadius, ov: d <= (S.overtureRadius ?? Infinity) });
       }
     return want;
   }
@@ -149,11 +150,16 @@ export class City {
     const todo = [...want.entries()].sort((a, b) => a[1].d - b[1].d);
     for (const [key, w] of todo) {
       const t = this.tiles.get(key);
-      if (t && (t.loading || t.detail === w.detail)) continue;
-      if (t && !w.detail && t.detail) continue; // keep detail mesh until unloaded (avoids thrash)
+      if (t && (t.loading || !this._needs(t, w))) continue;
       if (this.inFlight >= this.maxInFlight) break;
-      this._request(key, w);
+      // never downgrade a built tile (avoids thrash): the request keeps whatever richness the tile already has
+      this._request(key, t && t.detail != null ? { ...w, detail: w.detail || t.detail, ov: w.ov || t.ov } : w);
     }
+  }
+
+  /** does a wanted state need a (re)build of tile t? Only upgrades (far -> detail, OSM-only -> with Overture fill) do; downgrades wait for the unload. */
+  _needs(t, w) {
+    return t.detail == null || (w.detail && !t.detail) || (w.ov && !t.ov);
   }
 
   async _request(key, w) {
@@ -166,7 +172,7 @@ export class City {
       const need = [];
       for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) need.push(this.source.get('r', ix + dx, iz + dz));
       const [b, m, ...roads] = await Promise.all([this.source.get('b', ix, iz), w.detail ? this.source.get('m', ix, iz) : Promise.resolve(null), ...need]);
-      this.worker.postMessage({ type: 'tile', key, ix, iz, detail: w.detail, b, misc: m, roads });
+      this.worker.postMessage({ type: 'tile', key, ix, iz, detail: w.detail, ov: w.ov, ovPlain: !!this.settings.overturePlain, b, misc: m, roads });
     } catch (err) {
       console.warn('tile request failed', key, err);
       this.inFlight--;
@@ -184,6 +190,7 @@ export class City {
     if (m.error) { console.error('tile build failed', m.key, m.error); return; }
     this._clearParts(t);
     t.detail = m.detail;
+    t.ov = m.ov;
     const ox = m.ix * TILE, oz = m.iz * TILE;
     if (m.bld && m.bld.vertexCount) {
       const mesh = new THREE.Mesh(makeTileGeometry(m.bld), this.bldMat);
@@ -323,6 +330,6 @@ export class City {
       this.update(camera, 0.3);
       await new Promise((r) => setTimeout(r, 40));
       if (performance.now() - t0 > timeoutMs) break;
-    } while (this.inFlight > 0 || [...this.tiles.values()].some((t) => t.loading) || [...this._wanted(camera.position).entries()].some(([k, w]) => !this.tiles.get(k) || this.tiles.get(k).detail !== w.detail && !(this.tiles.get(k).detail && !w.detail)));
+    } while (this.inFlight > 0 || [...this.tiles.values()].some((t) => t.loading) || [...this._wanted(camera.position).entries()].some(([k, w]) => !this.tiles.get(k) || this._needs(this.tiles.get(k), w)));
   }
 }

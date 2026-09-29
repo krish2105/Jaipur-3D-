@@ -159,7 +159,7 @@ export function buildHawaMahal(heroMat, propMat) {
   });
   inst.instanceMatrix.needsUpdate = true;
   inst.instanceColor.needsUpdate = true;
-  inst.castShadow = true; inst.receiveShadow = true;
+  inst.castShadow = false; inst.receiveShadow = true; // 953 x ~126 triangles: an inset window does not need to be drawn into every shadow cascade too
   g.add(inst);
   g.userData.windowCount = winPos.length;
   g.userData.heightM = topY + 4.8;

@@ -1,20 +1,33 @@
 // Browser-safe (no fs): raw Overpass elements -> tile-chunked data. Shared by scripts/bake-osm.mjs, tests and the lab.
 import { WALLED_CITY_APPROX } from './osm-zones.mjs';
+import { mergeOverture } from './overture-merge.mjs';
 import {
   TILE, extractBuildings, inferHeights, resolveParts, chunkBuildings, extractHighways, chunkRoads, buildGraph,
   extractMisc, chunkMisc, resolveLandmarks, resolveSites, projectGeom, centroid, signedArea, wallSolids,
 } from './osm-bake-lib.mjs';
 
-/** Pure: raw Overpass elements -> { files: Map<name, object>, manifest }. No I/O (used by the lab and tests). */
-export function bakeElements(elements, { osmBase = null, log = () => {} } = {}) {
+export const OVERTURE_ATTRIBUTION = '© OpenStreetMap contributors (ODbL); building footprints © Overture Maps Foundation (ODbL), incl. Google Open Buildings (CC BY 4.0) and Microsoft ML Building Footprints (ODbL)';
+
+/**
+ * Pure: raw Overpass elements -> { files: Map<name, object>, manifest }. No I/O (used by the lab and tests).
+ * @param overture optional { lines: parsed Overture JSON-lines (non-OSM footprints only), meta } — merged after de-duplication against OSM
+ */
+export function bakeElements(elements, { osmBase = null, log = () => {}, overture = null } = {}) {
   // ---- buildings
   let bl = extractBuildings(elements);
   for (const b of bl) { const c = centroid(b.outer); b.cx = c[0]; b.cz = c[1]; b.area = Math.abs(signedArea(b.outer)); }
   bl = resolveParts(bl);
-  inferHeights(bl, { zonePrior: 9.5, radius: 90 });
   // city walls: OSM footprints (area=yes) and lines become 6 m x 3 m solids, baked with the buildings
   const misc = extractMisc(elements);
   const walls = wallSolids(misc.walls);
+  let ovStats = null;
+  if (overture && overture.lines && overture.lines.length) {
+    const merged = mergeOverture(overture.lines, { osm: bl.concat(walls), roads: extractHighways(elements) });
+    ovStats = merged.stats;
+    bl.push(...merged.buildings);
+    log(`overture: ${ovStats.input} footprints -> ${ovStats.kept} merged (${JSON.stringify(ovStats.dropped)})`);
+  }
+  inferHeights(bl, { zonePrior: 9.5, radius: 90 });
   bl.push(...walls);
   const bTiles = chunkBuildings(bl, { simplifyTol: 0.15, minArea: 5 });
   log(`buildings: ${bl.length} (${walls.length} wall solids) -> ${bTiles.size} tiles`);
@@ -59,15 +72,16 @@ export function bakeElements(elements, { osmBase = null, log = () => {} } = {}) 
     unit: 'decimetre ints relative to tile min corner (x east, z south)',
     bakedAt: new Date().toISOString(),
     osmBase,
-    attribution: '© OpenStreetMap contributors (ODbL)',
+    attribution: ovStats ? OVERTURE_ATTRIBUTION : '© OpenStreetMap contributors (ODbL)',
     tiles: tileIndex,
     walledCity: boundary,
     landmarks,
     sites,
     gates,
-    counts: { buildings: bl.length, roadWays: ways.length, graphNodes: graph.nodes.length, graphEdges: graph.edges.length },
+    counts: { buildings: bl.length, buildingsOverture: ovStats ? ovStats.kept : 0, roadWays: ways.length, graphNodes: graph.nodes.length, graphEdges: graph.edges.length },
     heightSources: { tag: bl.filter((b) => b.src === 0).length, levels: bl.filter((b) => b.src === 1).length, inferred: bl.filter((b) => b.src === 2).length },
   };
+  if (ovStats) manifest.overture = { release: overture.meta?.release ?? null, fetchedAt: overture.meta?.fetchedAt ?? null, license: 'ODbL-1.0', sources: overture.meta?.sources ?? null, ...ovStats };
   files.set('manifest.json', manifest);
   return { files, manifest };
 }

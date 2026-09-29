@@ -163,10 +163,11 @@ export class RoadIndex {
 /**
  * Build the merged geometry for one tile.
  * @param {object} chunk   baked building chunk ({t:[ix,iz], b:[...]})
- * @param {object} opts    { detail:boolean, roads:RoadIndex|null, ground: Float32Array(2*n) [baseY, skirt] or null, seed }
+ * @param {object} opts    { detail:boolean, ovPlain:boolean (Overture footprints without any facade/roof detail), roads:RoadIndex|null, ground: Float32Array(2*n) [baseY, skirt] or null, seed }
  */
 export function buildTileGeometry(chunk, opts = {}) {
   const detail = !!opts.detail;
+  const ovPlain = !!opts.ovPlain;
   const roads = opts.roads || null;
   const M = new MeshBuilder();
   const stats = { buildings: 0, walls: 0, facingRoad: 0 };
@@ -187,9 +188,11 @@ export function buildTileGeometry(chunk, opts = {}) {
     const H = b.h;
     const y0 = baseY + minH;
     const heritage = b.k === 'her' || b.k === 'rel';
+    const det = detail && !(b.o && ovPlain); // ovPlain (low tier): Overture footprints are bare extrusions, walls + roof only
+    const lite = !!b.o; // Overture filler footprint: real outline, plain massing (no rooftop mumty, cornice only where it faces a street) so 46k of them fit the triangle budgets
     const flatRoof = !b.r || b.r === 'f';
     // parapet only on flat roofs
-    const parH = flatRoof && detail && H > 3.2 ? (heritage ? 1.35 : 0.85 + 0.25 * seedB) : 0;
+    const parH = flatRoof && det && H > 3.2 ? (heritage ? 1.35 : 0.85 + 0.25 * seedB) : 0;
     const storeys = Math.max(1, Math.round((H - 1) / 3.4));
     stats.buildings++;
 
@@ -215,7 +218,7 @@ export function buildTileGeometry(chunk, opts = {}) {
         }
         if (heritage) flags |= 4;
         wallIdx++;
-        if (detail && ri === 0 && (flags & 1) && storeys >= 2 && L > 4.5) {
+        if (det && ri === 0 && (flags & 1) && storeys >= 2 && L > 4.5) {
           const sa = q8(seedA), sb = q8(seedB);
           const shop = isShopWall(flags, cls, sa);
           const gH = groundHeight(sa, shop, sb), sH = storeyHeight(sb);
@@ -241,7 +244,7 @@ export function buildTileGeometry(chunk, opts = {}) {
         stats.walls++;
         u0 += L;
 
-        if (detail && ri === 0 && L > 3 && (cls === CLASS_CODE.com || heritage || cls === CLASS_CODE.oth || cls === CLASS_CODE.res)) {
+        if (det && ri === 0 && L > 3 && (!lite || (flags & 1)) && (cls === CLASS_CODE.com || heritage || cls === CLASS_CODE.oth || cls === CLASS_CODE.res)) {
           // cornice ledge under the parapet: a thin box protruding 0.16 m
           const cy0 = y0 + (H - minH) - 0.32, cy1 = y0 + (H - minH) + 0.02, e = 0.16;
           const a6 = [seedA, seedB, KIND.CORNICE / 16, cls / 16];
@@ -307,8 +310,8 @@ export function buildTileGeometry(chunk, opts = {}) {
           M.quad(f0, f3, f2, f1);
         }
       }
-      if (detail) addRoofClutter(M, outer, holes, bnds, yRoof, parH, seedA, seedB, cls, id, storeys, A2);
-      if (detail && heritage && (bnds.x1 - bnds.x0) * (bnds.z1 - bnds.z0) > 160) {
+      if (det) addRoofClutter(M, outer, holes, bnds, yRoof, parH, seedA, seedB, cls, id, storeys, A2, lite);
+      if (det && heritage && (bnds.x1 - bnds.x0) * (bnds.z1 - bnds.z0) > 160) {
         const ins = insetRing(outer, 1.6);
         for (let i = 0; i < ins.length; i += Math.max(1, Math.round(ins.length / 4))) inst.chhatri.push(ins[i][0], yRoof, ins[i][1], 1.0 + 0.2 * hash01(id, i, 3), hash01(id, i, 4));
       }
@@ -363,7 +366,7 @@ function cylinder(M, cx, y0, cz, r, h, seg, a1, A2) {
 }
 
 /** mumty (stair hut), black Sintex water tanks, occasional parapet-top kiosk; placed with rejection sampling. */
-function addRoofClutter(M, outer, holes, bnds, roofY, parH, seedA, seedB, cls, id, storeys, A2) {
+function addRoofClutter(M, outer, holes, bnds, roofY, parH, seedA, seedB, cls, id, storeys, A2, lite = false) {
   const area = (bnds.x1 - bnds.x0) * (bnds.z1 - bnds.z0);
   if (area < 28) return;
   const a1 = [seedA, seedB, KIND.CLUTTER / 16, cls / 16];
@@ -381,16 +384,16 @@ function addRoofClutter(M, outer, holes, bnds, roofY, parH, seedA, seedB, cls, i
     }
     return null;
   };
-  if (area > 45 && hash01(id, 5, 1) < 0.6) {
+  if (!lite && area > 45 && hash01(id, 5, 1) < 0.6) {
     const p = placeInside(1.6, 8, 1);
     if (p) box(M, p[0], roofY, p[1], 2.2 + hash01(id, 6, 1) * 1.2, 2.3, 2.4 + hash01(id, 7, 1) * 1.4, hash01(id, 8, 1) * 3.14, [seedA, seedB, KIND.CLUTTER / 16, 0.9], A2);
   }
-  const tanks = hash01(id, 9, 2) < 0.7 ? 1 + (hash01(id, 10, 2) < 0.3 ? 1 : 0) : 0;
+  const tanks = lite ? (hash01(id, 9, 2) < 0.4 ? 1 : 0) : hash01(id, 9, 2) < 0.7 ? 1 + (hash01(id, 10, 2) < 0.3 ? 1 : 0) : 0;
   for (let t = 0; t < tanks; t++) {
     const p = placeInside(1.0, 8, 3 + t);
     if (p) {
       const r = 0.55 + hash01(id, 11 + t, 2) * 0.25;
-      cylinder(M, p[0], roofY, p[1], r, 1.05 + hash01(id, 13 + t, 2) * 0.5, 10, [seedA, seedB, KIND.CLUTTER / 16, 0.95], A2);
+      cylinder(M, p[0], roofY, p[1], r, 1.05 + hash01(id, 13 + t, 2) * 0.5, lite ? 6 : 10, [seedA, seedB, KIND.CLUTTER / 16, 0.95], A2);
     }
   }
 }

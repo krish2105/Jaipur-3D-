@@ -394,7 +394,8 @@ export class App {
       if (wet > 0.03 && shadowsReady && hAbove < maxH) {
         if (!this._dummyTex) { this._dummyTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); this._dummyTex.needsUpdate = true; }
         ex.uReflTex.value = this._dummyTex;
-        done = refl.render(this.scene, cam, gy + 0.05, [this.fx.rain.group]);
+        // instanced oriels / chhatris are left out of the mirror: at reflectionScale they are a few pixels, and they were 1 M+ triangles of the wet-street pass
+        done = refl.render(this.scene, cam, gy + 0.05, [this.fx.rain.group, this.city.pools.jharokha.mesh, this.city.pools.chhatri.mesh]);
         ex.uReflTex.value = refl.rt.texture;
       }
       if (done) { rex.x = Math.min(1, wet * 1.15); rex.y = 1.0 - Math.min(1, Math.max(0, (hAbove - 0.6 * maxH) / (0.4 * maxH))); } else rex.x = 0;

@@ -5,16 +5,16 @@ class PB {
   constructor() { this.pos = []; this.nrm = []; this.col = []; this.idx = []; this.n = 0; }
   v(x, y, z, nx, ny, nz, c) { this.pos.push(x, y, z); this.nrm.push(nx, ny, nz); this.col.push(c[0], c[1], c[2]); return this.n++; }
   quad(a, b, c, d) { this.idx.push(a, b, c, a, c, d); }
-  // axis-aligned box, faces outward
-  box(cx, cy, cz, sx, sy, sz, c, top = c) {
+  // axis-aligned box, faces outward. `faces` is a bit mask of the faces to emit (1 +z, 2 -z, 4 +x, 8 -x, 16 +y, 32 -y) so hidden faces can be skipped
+  box(cx, cy, cz, sx, sy, sz, c, top = c, faces = 63) {
     const x0 = cx - sx / 2, x1 = cx + sx / 2, y0 = cy - sy / 2, y1 = cy + sy / 2, z0 = cz - sz / 2, z1 = cz + sz / 2;
-    const f = (p, n, cc) => { const ids = p.map((q) => this.v(q[0], q[1], q[2], n[0], n[1], n[2], cc)); this.quad(ids[0], ids[1], ids[2], ids[3]); };
-    f([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [0, 0, 1], c);
-    f([[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], [0, 0, -1], c);
-    f([[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], [1, 0, 0], c);
-    f([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [-1, 0, 0], c);
-    f([[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], [0, 1, 0], top);
-    f([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [0, -1, 0], c);
+    const f = (bit, p, n, cc) => { if (!(faces & bit)) return; const ids = p.map((q) => this.v(q[0], q[1], q[2], n[0], n[1], n[2], cc)); this.quad(ids[0], ids[1], ids[2], ids[3]); };
+    f(1, [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [0, 0, 1], c);
+    f(2, [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], [0, 0, -1], c);
+    f(4, [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], [1, 0, 0], c);
+    f(8, [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [-1, 0, 0], c);
+    f(16, [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], [0, 1, 0], top);
+    f(32, [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [0, -1, 0], c);
   }
   // vertical cylinder (smooth normals)
   cyl(cx, y0, cz, r0, r1, h, seg, c, cap = true) {
@@ -51,9 +51,9 @@ class PB {
     }
   }
   // flat polygon facing +z at depth z (for arched inset panels)
-  archPanel(cx, cy, z, w, h, c) {
+  archPanel(cx, cy, z, w, h, c, segs = 8) {
     const r = w / 2, hs = h - r, pts = [[-r, 0], [r, 0], [r, hs]];
-    for (let i = 1; i < 8; i++) { const a = (i / 8) * Math.PI; pts.push([Math.cos(a) * r, hs + Math.sin(a) * r]); }
+    for (let i = 1; i < segs; i++) { const a = (i / segs) * Math.PI; pts.push([Math.cos(a) * r, hs + Math.sin(a) * r]); }
     pts.push([-r, hs]);
     const ids = pts.map((p) => this.v(cx + p[0], cy + p[1], z, 0, 0, 1, c));
     for (let i = 1; i < ids.length - 1; i++) this.idx.push(ids[0], ids[i], ids[i + 1]);
@@ -71,27 +71,29 @@ class PB {
 
 const PINK = [0.52, 0.2, 0.15], CREAM = [0.72, 0.6, 0.45], DARK = [0.03, 0.025, 0.022], STONE = [0.42, 0.3, 0.22];
 
-/** Jharokha (projecting oriel window): corbels, floor, arched lattice bay, chhajja eave with a small dome. Front = +Z. */
+/** Jharokha (projecting oriel window): corbels, floor, arched lattice bay, chhajja eave with a small dome. Front = +Z.
+ *  ~125 triangles (was 243): it is instanced thousands of times, so faces against the wall / under another box are not emitted and the cupola is 8x3. */
 export function makeJharokhaGeometry() {
   const b = new PB();
-  // stepped corbel bracket
-  b.box(0, -0.10, 0.22, 0.95, 0.10, 0.44, STONE);
-  b.box(0, -0.20, 0.16, 0.7, 0.10, 0.32, STONE);
-  b.box(0, -0.30, 0.10, 0.45, 0.10, 0.20, STONE);
-  b.box(0, 0.03, 0.30, 1.56, 0.08, 0.62, CREAM); // floor slab
-  b.box(0, 0.75, 0.29, 1.44, 1.32, 0.56, PINK); // body
+  const FRONT_SIDES = 1 | 4 | 8; // +z, +x, -x
+  // stepped corbel bracket (no back, no top: the next step / the slab covers it)
+  b.box(0, -0.10, 0.22, 0.95, 0.10, 0.44, STONE, STONE, FRONT_SIDES | 32);
+  b.box(0, -0.20, 0.16, 0.7, 0.10, 0.32, STONE, STONE, FRONT_SIDES | 32);
+  b.box(0, -0.30, 0.10, 0.45, 0.10, 0.20, STONE, STONE, FRONT_SIDES | 32);
+  b.box(0, 0.03, 0.30, 1.56, 0.08, 0.62, CREAM, CREAM, FRONT_SIDES | 16 | 32); // floor slab
+  b.box(0, 0.75, 0.29, 1.44, 1.32, 0.56, PINK, PINK, FRONT_SIDES); // body (slab under it, trim over it)
   // trim frame
-  b.box(0, 1.43, 0.30, 1.56, 0.07, 0.62, CREAM);
+  b.box(0, 1.43, 0.30, 1.56, 0.07, 0.62, CREAM, CREAM, FRONT_SIDES | 32);
   // three arched openings on the front, two on each side
   const front = 0.29 + 0.28 + 0.004;
-  for (let i = -1; i <= 1; i++) { b.archPanel(i * 0.46, 0.22, front, 0.36, 1.0, DARK); }
+  for (let i = -1; i <= 1; i++) { b.archPanel(i * 0.46, 0.22, front, 0.36, 1.0, DARK, 4); }
   // eave (chhajja) and shallow dome
-  b.box(0, 1.52, 0.30, 1.74, 0.06, 0.8, CREAM);
-  b.dome(0, 1.55, 0.29, 0.62, 0.46, 12, 4, PINK);
-  b.cyl(0, 2.0, 0.29, 0.03, 0.0, 0.16, 6, CREAM, false);
-  // side panels via thin boxes
-  b.box(0.727, 0.75, 0.29, 0.02, 0.9, 0.34, DARK);
-  b.box(-0.727, 0.75, 0.29, 0.02, 0.9, 0.34, DARK);
+  b.box(0, 1.52, 0.30, 1.74, 0.06, 0.8, CREAM, CREAM, FRONT_SIDES | 16 | 32);
+  b.dome(0, 1.55, 0.29, 0.62, 0.46, 8, 3, PINK);
+  b.cyl(0, 2.0, 0.29, 0.03, 0.0, 0.16, 4, CREAM, false);
+  // side panels via thin boxes (only the outward face shows)
+  b.box(0.727, 0.75, 0.29, 0.02, 0.9, 0.34, DARK, DARK, 4);
+  b.box(-0.727, 0.75, 0.29, 0.02, 0.9, 0.34, DARK, DARK, 8);
   return b.build();
 }
 

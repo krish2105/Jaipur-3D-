@@ -26,7 +26,7 @@ canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
 /* attribution: a centred line under the dock (the dock floats 18 px above the bottom edge), full text on wide screens, short on phones */
 #credit { position: fixed; left: var(--safe-l); right: var(--safe-r); bottom: calc(3px + var(--safe-b)); text-align: center; font-size: 9px; line-height: 12px; color: var(--fg-dim); z-index: 20; pointer-events: none; text-shadow: 0 0 3px #000; white-space: nowrap; overflow: hidden; }
 #credit .short { display: none; }
-@media (max-width: 860px) { #credit .long { display: none; } #credit .short { display: inline; } }
+@media (max-width: 1000px) { #credit .long { display: none; } #credit .short { display: inline; } }
 
 /* ---- compact monochrome UI (src/ui/ui.js) ---- */
 #perf { top: calc(40px + var(--safe-t)); }
