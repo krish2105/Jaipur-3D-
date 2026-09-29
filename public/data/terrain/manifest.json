@@ -1,0 +1,36 @@
+{
+ "lakeLevel": 411,
+ "lakeLevelNote": "modal value of perfectly flat SRTM texels within 1.5 km of Jal Mahal (SRTM water bodies are flat)",
+ "format": "uint16-le height*20 (m), row-major, row0=north, col0=west",
+ "scale": 20,
+ "origin": {
+  "lat": 26.9235,
+  "lon": 75.8265
+ },
+ "source": "Mapzen Terrarium tiles (AWS Open Data, s3.amazonaws.com/elevation-tiles-prod), derived from SRTM and other public sources",
+ "near": {
+  "halfM": 8000,
+  "size": 1024,
+  "chunks": 4,
+  "chunkSize": 256,
+  "texelM": 15.625,
+  "zoom": 13,
+  "stats": {
+   "min": 352,
+   "max": 657.2,
+   "mean": 435.8
+  }
+ },
+ "far": {
+  "halfM": 36000,
+  "size": 512,
+  "texelM": 140.625,
+  "zoom": 10,
+  "stats": {
+   "min": 156.6,
+   "max": 780.4,
+   "mean": 395.1
+  }
+ },
+ "bakedAt": "2026-09-29T09:10:21.953Z"
+}

@@ -7,7 +7,7 @@ Living log. A resumed session should read this first.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Scaffold, Vite build, perf overlay, tier detection | done |
-| 2 | Data pipeline (Overpass + terrain, baking, chunking) | terrain: pending; OSM: **BLOCKED** (see below) |
+| 2 | Data pipeline (Overpass + terrain, baking, chunking) | terrain: **done** (2.6 MB baked); OSM fetch+bake scripts done and unit-tested, **data BLOCKED** (see below) |
 | 3 | Terrain, streets, OSM buildings, real-metre facades | pending |
 | 4 | Hand-modelled landmarks, Amer/Nahargarh silhouettes | pending |
 | 5 | Sky, sun, moon, materials, time of day | pending |
@@ -43,6 +43,19 @@ domain is reachable. The app shows an on-screen notice while the OSM chunks are 
 - Fixed-timestep loop (1/30 s) with clamped frame delta (0.1 s) in `src/core/loop.js`.
 - Dynamic resolution + optional fps cap (30 on phones) to limit heat.
 - Web fetch of Wikipedia is blocked; landmark facts are checked through web search snippets and recorded with URLs in `docs/LANDMARK_FACTS.md`.
+
+## Phase 2 notes
+
+- `npm run bake:terrain` -> `public/data/terrain/` (near 16 km @ 15.6 m/texel in 4x4 chunks; far 72 km @ 141 m/texel; uint16 = metres*20).
+  City datum ~443 m; lake surface 411.0 m (modal flat SRTM texels near Jal Mahal); Nahargarh ridge ~588 m. SRTM is a surface model, so the app
+  smooths the terrain under the Walled City (urban DSM noise).
+- `npm run fetch:osm` -> `data-raw/osm/*.json` (git-ignored). Zones: core (Walled City + margin, full features), ring (low-detail fabric +
+  main roads + water), amer / jalmahal / nahargarh (forts, walls, buildings, lake). Multi-mirror, tiled, polite delays. Exits 2 and names the blocked hosts.
+- `npm run bake:osm` -> `public/data/osm/{manifest,graph,b_*,r_*,m_*}.json`, 500 m tiles, decimetre-int coordinates relative to the tile.
+  Height rule: `height` tag > `building:levels` x 3.3 m > inferred (distance-weighted log-mean of known neighbours within 90 m blended with class prior,
+  +-14 % deterministic jitter). `building:part` children replace their outline. Multipolygon relations stitched; holes assigned.
+- Unit tests (`npm test`) use `tests/fixtures/overpass-synthetic.mjs`: a SYNTHETIC fixture in the Overpass `out geom` shape. It is test-only and is never baked.
+- `npm run check:data` enforces the ~30 MB budget.
 
 ## Known shortfalls
 
