@@ -30,6 +30,7 @@ export const TIERS = {
       farTileRadius: 3200, // m: low-detail (extruded footprints, no facade detail) beyond
       overtureRadius: 1200, // m: tiles this close also carry the Overture filler footprints (46k plain massings); beyond it OSM footprints only
       detailRadius: 260, // m: instanced jharokhas/chhatris/arcade geometry
+      wireVerts: 60000, // overhead utility wires (vertices) shared by the detail tiles
       jharokhaPool: 5400, // oriel instances shared by all tiles (nearest tiles fill it first)
       vehicles: 900,
       pedestrians: 1600,
@@ -79,7 +80,8 @@ export const TIERS = {
       farTileRadius: 2400,
       overtureRadius: 800,
       detailRadius: 160,
-      jharokhaPool: 2300, // was 2700: the Overture frontage fills the pool to the top, and the Diwali street then passed the 15,000 instance budget
+      wireVerts: 30000,
+      jharokhaPool: 2100, // was 2700: the Overture frontage fills the pool to the top, and the Diwali street then passed the 15,000 instance budget
       vehicles: 450,
       pedestrians: 800,
       animals: 45,
@@ -131,6 +133,7 @@ export const TIERS = {
       overtureRadius: 900,
       overturePlain: true, // phone: the filler footprints are bare extrusions (10 triangles each); medium / high add parapets, street-side cornices and some rooftop tanks
       detailRadius: 70,
+      wireVerts: 12000,
       jharokhaPool: 960,
       vehicles: 160,
       pedestrians: 260,

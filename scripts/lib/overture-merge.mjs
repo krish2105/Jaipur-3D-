@@ -129,6 +129,18 @@ export function buildOccupancy(osm, roads) {
       });
       return hit;
     },
+    /** distance from (x,z) to the nearest street CENTRELINE among segments within `reach` (a building that reaches the centreline is wrong whatever the guessed width) */
+    centreDist(x, z, reach = 3) {
+      let best = 1e9;
+      rGrid.query(x - reach, z - reach, x + reach, z + reach, (s) => {
+        const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz;
+        let t = l2 ? ((x - s.ax) * dx + (z - s.az) * dz) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(x - (s.ax + t * dx), z - (s.az + t * dz));
+        if (d < best) best = d;
+      });
+      return best;
+    },
     /** distance from (x,z) to the nearest street edge (negative = inside the carriageway), among segments within `reach`. */
     roadClearance(x, z, reach = 8) {
       let best = 1e9;
@@ -164,7 +176,7 @@ export function samplePoints(outer, holes, area, max = 96) {
  * @param {{osm:object[], roads:object[]}} ctx
  * @returns {{ buildings: object[], stats: object }}
  */
-export function mergeOverture(lines, { osm, roads }, { minArea = 10, dupFrac = 0.2, roadFrac = 0.3, simplify = 0.45 } = {}) {
+export function mergeOverture(lines, { osm, roads }, { minArea = 10, dupFrac = 0.2, roadFrac = 0.3, centreClear = 1.0, simplify = 0.45 } = {}) {
   const occ = buildOccupancy(osm, roads);
   const stats = { input: lines.length, polygons: 0, kept: 0, dropped: { geometry: 0, small: 0, duplicateOfOsm: 0, onStreet: 0 } };
   const out = [];
@@ -181,13 +193,19 @@ export function mergeOverture(lines, { osm, roads }, { minArea = 10, dupFrac = 0
       const area = Math.abs(signedArea(outer)) - holes.reduce((s, h) => s + Math.abs(signedArea(h)), 0);
       if (!(area >= minArea)) { stats.dropped.small++; continue; }
       const pts = samplePoints(outer, holes, area);
-      let inOsm = 0, onRoad = 0;
+      let inOsm = 0, onRoad = 0, onCentre = false;
       for (const [x, z] of pts) {
         if (occ.inOsm(x, z)) inOsm++;
         if (occ.roadClearance(x, z) < -0.3) onRoad++;
       }
+      // outline points too (a thin strip across a street can slip between the interior samples)
+      for (let i = 0; i < outer.length && !onCentre; i++) {
+        const a = outer[i], b = outer[(i + 1) % outer.length];
+        if (occ.centreDist(a[0], a[1]) < centreClear || occ.centreDist((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) < centreClear) onCentre = true;
+      }
+      for (let i = 0; i < pts.length && !onCentre; i++) if (occ.centreDist(pts[i][0], pts[i][1]) < centreClear) onCentre = true;
       if (inOsm / pts.length >= dupFrac) { stats.dropped.duplicateOfOsm++; continue; }
-      if (onRoad / pts.length >= roadFrac) { stats.dropped.onStreet++; continue; }
+      if (onCentre || onRoad / pts.length >= roadFrac) { stats.dropped.onStreet++; continue; }
       const [cx, cz] = centroid(outer);
       const id = overtureId(o.id) + (part ? `_${part}` : '');
       part++;

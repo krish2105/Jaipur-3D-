@@ -38,13 +38,14 @@ test('merge keeps free sites and drops duplicates of OSM, footprints on a street
     row('free', poly(rectRing(100, 150, 20, 15))),
     row('dup-of-osm', poly(rectRing(11, 10.5, 20, 10))), // OSM way 1 is rect(10,10,20,10)
     row('on-street', poly(rectRing(100, -4, 20, 8))), // primary road along z = 0, 14 m wide
+    row('reaches-centre', poly(rectRing(300, -0.4, 20, 30))), // only 22 % of it is on the carriageway, but it covers the centreline: wrong whatever the guessed width
     row('by-footway', poly(rectRing(21, 47, 9, 6))), // straddles the footway (z = 50): a footway is not a carriageway, keep
     row('sliver', poly(rectRing(300, 300, 2, 2))),
     row('point', { type: 'Point', coordinates: [75.8, 26.9] }),
   ];
   const { buildings, stats } = mergeOverture(rows, osmContext());
   assert.deepEqual(buildings.map((b) => b.id).sort(), [overtureId('by-footway'), overtureId('free')].sort());
-  assert.deepEqual(stats.dropped, { geometry: 1, small: 1, duplicateOfOsm: 1, onStreet: 1 });
+  assert.deepEqual(stats.dropped, { geometry: 1, small: 1, duplicateOfOsm: 1, onStreet: 2 });
   assert.equal(stats.kept, 2);
   const free = buildings.find((b) => b.id === overtureId('free'));
   assert.ok(free.ov && free.tags.building === 'yes' && !free.part);

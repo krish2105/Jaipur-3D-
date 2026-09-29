@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { createBuildingMaterial, makeTileGeometry } from './facadeMaterial.js';
 import { createRoadMaterial } from './roadMaterial.js';
-import { InstancePool, makeJharokhaGeometry, makeChhatriGeometry, makeLampPostGeometry, makeLampHeadGeometry, makeTreeGeometry } from './props.js';
+import { InstancePool, makeJharokhaGeometry, makeChhatriGeometry, makeLampPostGeometry, makeLampHeadGeometry, makeTreeGeometry, LinePool } from './props.js';
 import TileWorker from './tileWorker.js?worker';
 
 const TILE = 500;
@@ -80,6 +80,14 @@ export class City {
     };
     this.lampHeadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.45, 0.4), toneMapped: false });
     this.pools.lampHead = new InstancePool(makeLampHeadGeometry(), this.lampHeadMat, 1500, { name: 'lampHeads', castShadow: false, receiveShadow: false });
+    // overhead utility wires: one shared line buffer, dark, fading out with distance (lines do not get the aerial-perspective fog)
+    const wireMat = new THREE.LineBasicMaterial({ color: 0x14110e, transparent: true, depthWrite: false });
+    wireMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying float vWireD;\nvoid main() {').replace('#include <project_vertex>', '#include <project_vertex>\n vWireD = length(mvPosition.xyz);');
+      sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying float vWireD;\nvoid main() {').replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.a *= 1.0 - smoothstep(70.0, 190.0, vWireD);');
+    };
+    wireMat.userData.programKey = 'wires';
+    this.pools.wire = new LinePool(s.wireVerts ?? 20000, wireMat, 'wires');
     for (const p of Object.values(this.pools)) this.group.add(p.mesh);
     this.scene.add(this.group);
 
@@ -206,6 +214,10 @@ export class City {
       const inst = m.bld.inst;
       if (m.detail && inst.jharokha.length) this._placeJharokhas(t, inst.jharokha, ox, oz);
       if (m.detail && inst.chhatri.length) this._placeChhatris(t, inst.chhatri, ox, oz);
+    }
+    if (m.detail && m.wires && m.wires.length) {
+      const wr = this.pools.wire.alloc(m.wires.length / 3);
+      if (wr) { this.pools.wire.write(wr, m.wires, ox, oz); t.ranges.wire = wr; }
     }
     if (m.roads && m.roads.vertexCount) {
       const g = new THREE.BufferGeometry();

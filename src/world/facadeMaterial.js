@@ -39,6 +39,7 @@ FS gFS;
 float sdBox2(vec2 p, vec2 b){ vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
 // opening with round or pointed (cusped) arch head; base at y = 0, centred on x = 0
 float sdArch(vec2 p, float w, float h, float pointed){
+  if (pointed > 1.5) return sdBox2(p - vec2(0.0, h * 0.5), vec2(w * 0.5 - 0.02, h * 0.5 - 0.02)) - 0.02; // pointed = 2: rectangular opening with a slightly eased corner
   float r = w * 0.5;
   float hs = max(h - r * mix(1.0, 1.41421356, pointed), 0.02); // pointed arch apex sits at exactly h
   float dRect = sdBox2(p - vec2(0.0, hs * 0.5), vec2(r, hs * 0.5));
@@ -116,31 +117,54 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   vec3 trim = vec3(0.74, 0.62, 0.47) * (0.85 + 0.2 * n2);
   float sd = 1e3;
   vec3 interior = vec3(0.012, 0.011, 0.011);
-  float openKind = 0.0; // 1 window, 2 shop arch, 3 door
+  float openKind = 0.0; // 1 window, 2 shop opening, 3 door, 4 shuttered window (road-facing upper floors)
   float emitAmt = 0.0;
   vec3 emitCol = vec3(1.0, 0.62, 0.28);
   float hb = hash12(vec2(bi + seedA * 91.0, floorIdx + seedB * 37.0));
   float hb2 = hash12(vec2(bi * 1.7 + seedB * 53.0, floorIdx * 3.1 + 5.0));
   float topLimit = H - 0.05;
+  // opening shape in local metres (kept for the bump pass): centre-bottom position, width, height, arch kind (0 round, 1 pointed, 2 rectangular)
+  vec2 opP = vec2(0.0);
+  float opW = 1.0, opH = 1.0, opPt = 0.0;
+  // pillared shop frontage (photos: square pillars, a white signboard fascia, a projecting chhajja): layout of the ground floor
+  float signH = mix(0.72, 0.98, seedB);
+  float chhajjaH = 0.30;
+  float openTop = groundH - chhajjaH - 0.12 - signH;
+  float pillarW = 0.44;
+  float wCol = 1.0;   // window column inside the bay (road-facing upper floors)
+  float winX = 0.0;
   if (v < topLimit) {
     if (ground && shop) {
-      float aw = bayW * 0.82, ah = groundH * 0.80;
-      sd = sdArch(vec2(bx, v - 0.12), aw, ah, 1.0);
+      opP = vec2(bx, v - 0.10); opW = bayW - pillarW; opH = openTop - 0.10; opPt = 2.0;
+      sd = sdArch(opP, opW, opH, opPt);
       openKind = 2.0;
     } else if (ground) {
-      if (hb < 0.24) { sd = sdArch(vec2(bx, v), 1.05, 2.1, 0.0); openKind = 3.0; }
-      else if (hb < 0.85) { sd = sdArch(vec2(bx, v - 1.05), 0.8, 1.05, 0.0); openKind = 1.0; }
+      if (hb < 0.24) { opP = vec2(bx, v); opW = 1.05; opH = 2.1; opPt = 0.0; sd = sdArch(opP, opW, opH, opPt); openKind = 3.0; }
+      else if (hb < 0.85) { opP = vec2(bx, v - 1.05); opW = 0.8; opH = 1.05; opPt = 0.0; sd = sdArch(opP, opW, opH, opPt); openKind = 1.0; }
     } else if (hb2 > 0.08) {
-      float ww = min(bayW * 0.46, 1.05) * (0.9 + 0.2 * hb);
-      float wh = 1.35 + 0.35 * hb2;
-      sd = sdArch(vec2(bx, fv - 0.85), ww, wh, heritage || bazaar ? 1.0 : (hb > 0.5 ? 1.0 : 0.0));
-      openKind = 1.0;
+      if (face && !heritage) {
+        // road-facing upper floors: two (three in a wide bay) tall louvre-shuttered windows per bay, rectangular, with a sill
+        float nW = bayW > 3.25 ? 3.0 : 2.0;
+        float cw = bayW / nW;
+        float cx = bx + bayW * 0.5;
+        wCol = floor(cx / cw);
+        winX = cx - (wCol + 0.5) * cw;
+        opP = vec2(winX, fv - 0.62); opW = cw * 0.60; opH = 1.55 + 0.45 * hb2; opPt = 2.0;
+        sd = sdArch(opP, opW, opH, opPt);
+        openKind = 4.0;
+      } else {
+        float ww = min(bayW * 0.46, 1.05) * (0.9 + 0.2 * hb);
+        float wh = 1.35 + 0.35 * hb2;
+        opP = vec2(bx, fv - 0.85); opW = ww; opH = wh; opPt = heritage || bazaar ? 1.0 : (hb > 0.5 ? 1.0 : 0.0);
+        sd = sdArch(opP, opW, opH, opPt);
+        openKind = 1.0;
+      }
     }
   }
   float aa = fwidth(sd) * 1.3 + 1e-3;
   float inside = (openKind > 0.0) ? 1.0 - smoothstep(-aa, aa, sd) : 0.0;
   inside *= mix(0.35, 1.0, detail);
-  float frameW = openKind == 2.0 ? 0.13 : 0.085;
+  float frameW = openKind == 2.0 ? 0.07 : (openKind == 4.0 ? 0.075 : 0.085);
   float frame = (openKind > 0.0) ? smoothstep(-aa, aa, sd) * (1.0 - smoothstep(frameW - aa, frameW + aa, sd)) : 0.0;
   frame *= detail;
   col = mix(col, trim, frame * 0.92);
@@ -151,27 +175,45 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   bool open = hash12(vec2(bi + seedA * 17.0, 3.0 + seedB * 5.0)) < uShopOpen;
   if (openKind == 2.0) {
     if (open) {
-      // dim shop interior: warm back wall, a few shelves of muted goods; depth gradient toward the top
-      float gd = vnoise(vec2(bx * 2.1 + bi * 3.0, v * 2.3) + seedA * 20.0);
-      vec3 goods = mix(vec3(0.07, 0.04, 0.025), signColor(fract(gd * 3.7 + seedB)) * 0.10, 0.5);
-      float shelf = smoothstep(0.35, 0.6, fract(v * 1.3)) * (1.0 - smoothstep(0.85, 1.0, v / groundH));
-      interior = mix(vec3(0.020, 0.015, 0.012), goods, 0.55 * shelf);
-      interior *= 0.55 + 0.45 * (1.0 - v / groundH);
-      emitAmt = 0.16 * uNight * step(0.12, hash12(vec2(bi, seedA * 71.0)));
+      // dim shop interior: shelves of small goods (bolts of cloth, brass, sacks) in saturated muted colours, a counter at the bottom, darker toward the ceiling
+      vec2 gc = vec2(bx * 6.8 + bi * 7.0, v * 4.6);
+      vec2 cid = floor(gc), cf = fract(gc);
+      float present = step(0.30, hash12(cid + seedA * 31.0));
+      float item = present * smoothstep(0.05, 0.13, cf.x) * (1.0 - smoothstep(0.87, 0.95, cf.x)) * smoothstep(0.07, 0.15, cf.y) * (1.0 - smoothstep(0.58, 0.68, cf.y));
+      vec3 gcol = signColor(fract(hash12(cid * 1.3 + seedB * 9.0) * 3.7)) * (0.20 + 0.30 * hash12(cid + 3.0)) * (0.75 + 0.5 * vnoise(gc * 4.0));
+      float board = (1.0 - smoothstep(0.0, 0.03, abs(cf.y - 0.03))) * 0.5;
+      float depthK = 0.35 + 0.65 * (1.0 - v / groundH);
+      interior = mix(vec3(0.020, 0.015, 0.012), gcol, item * 0.9) * depthK + vec3(0.06, 0.04, 0.025) * board * depthK;
+      float counter = smoothstep(0.78, 0.84, v) * (1.0 - smoothstep(0.95, 1.0, v));
+      interior = mix(interior, vec3(0.20, 0.15, 0.10), counter * 0.8);
+      emitAmt = 0.105 * uNight * step(0.12, hash12(vec2(bi, seedA * 71.0))) * (0.55 + 0.9 * item); // the goods glow, the gaps between them stay dim
       emitCol = mix(vec3(1.0, 0.72, 0.36), vec3(0.85, 0.95, 1.0), step(0.75, hb2));
     } else {
       float slat = 0.5 + 0.5 * sin(v * 60.0);
       interior = vec3(0.12, 0.125, 0.135) * (0.85 + 0.15 * slat);
       rough = 0.45;
     }
-  } else if (openKind == 1.0) {
+  } else if (openKind == 1.0 || openKind == 4.0) {
     float lit = step(hb, uNight * (0.28 + 0.4 * uFestival) * (0.5 + 0.5 * hb2));
     emitAmt = 0.085 * lit;
     emitCol = mix(vec3(1.0, 0.6, 0.25), vec3(0.95, 0.85, 0.6), step(0.7, hb2));
     // window shutters/curtains: subtle colour variation daytime
     interior = mix(vec3(0.014, 0.012, 0.012), vec3(0.05, 0.03, 0.02), step(0.6, hb));
     // jaali lattice on heritage bays
-    if (heritage) interior *= 0.5 + 0.5 * step(0.45, abs(sin((bx + fv) * 32.0) * sin((bx - fv) * 32.0)));
+    if (heritage && openKind == 1.0) interior *= 0.5 + 0.5 * step(0.45, abs(sin((bx + fv) * 32.0) * sin((bx - fv) * 32.0)));
+    if (openKind == 4.0) {
+      // two louvred leaves (cream-grey, green-grey or brown); about a third stand open on a dark room
+      float hw = hash12(vec2(bi * 3.7 + wCol * 11.0 + seedA * 29.0, floorIdx + 2.0));
+      vec3 leaf = hw < 0.5 ? vec3(0.34, 0.30, 0.24) : (hw < 0.8 ? vec3(0.085, 0.13, 0.095) : vec3(0.13, 0.065, 0.04));
+      float slats = 0.62 + 0.38 * smoothstep(0.25, 0.75, abs(fract((fv - 0.62) * 17.0) - 0.5) * 2.0);
+      float mid = 1.0 - 0.7 * (1.0 - smoothstep(0.0, 0.03, abs(winX)));
+      vec3 shut = leaf * slats * mid;
+      float openLeaf = step(0.68, hash12(vec2(bi * 5.3 + wCol * 3.0 + seedB * 17.0, floorIdx * 9.0)));
+      float side = step(0.0, winX * (hb - 0.5)); // an open window has one leaf swung back
+      interior = mix(shut, interior, openLeaf * side);
+      emitAmt *= 0.5 + 0.5 * openLeaf;
+      rough = 0.55;
+    }
   } else if (openKind == 3.0) {
     interior = vec3(0.045, 0.022, 0.012) * (0.7 + 0.6 * step(0.5, fract(bx * 7.0)));
   }
@@ -180,14 +222,62 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   rough = mix(rough, roughOpen, inside * (openKind == 2.0 && !open ? 0.0 : 1.0));
   vec3 emit = emitCol * emitAmt * inside;
 
-  // ---- shop signboard band + awning colour
-  if (shop && ground && v > groundH * 0.80 + 0.22 && v < groundH - 0.14 && detail > 0.05) {
+  // ---- pillars, signboard fascia, awnings and chhajja of a shop frontage
+  if (shop && ground && detail > 0.02) {
+    // square pillar on every bay boundary: plinth, shaft, capital that widens under the fascia
+    float pw = pillarW * (1.0 + 0.30 * (1.0 - smoothstep(0.0, 0.45, v)) + 0.45 * smoothstep(openTop - 0.34, openTop - 0.08, v));
+    float pAa = fwidth(bx) * 1.2 + 1e-3;
+    float pMask = smoothstep(bayW * 0.5 - pw * 0.5 - pAa, bayW * 0.5 - pw * 0.5 + pAa, abs(bx)) * (1.0 - smoothstep(openTop + 0.02, openTop + 0.05, v));
+    vec3 pillarCol = mix(base * 1.10, vec3(0.80, 0.66, 0.50), 0.50) * (0.88 + 0.16 * n2);
+    float pShade = 0.78 + 0.22 * smoothstep(0.0, pw * 0.5, bayW * 0.5 - abs(bx)); // rounded-looking edge falloff
+    pillarCol *= pShade * (1.0 - 0.25 * soot);
+    col = mix(col, pillarCol, pMask * detail);
+    inside *= 1.0 - pMask;
+    emit *= 1.0 - pMask;
+    rough = mix(rough, 0.92, pMask);
+    // fascia beam and the boards on it
+    float sbBot = openTop + 0.12, sbTop = sbBot + signH;
+    float beam = smoothstep(openTop - 0.01, openTop + 0.01, v) * (1.0 - smoothstep(sbBot - 0.02, sbBot, v));
+    col = mix(col, trim * 0.92, beam * detail);
+    float board = smoothstep(sbBot - 0.01, sbBot + 0.01, v) * (1.0 - smoothstep(sbTop - 0.01, sbTop + 0.01, v)) * (1.0 - smoothstep(bayW * 0.5 - 0.10, bayW * 0.5 - 0.07, abs(bx)));
     float sh = hash12(vec2(bi + seedA * 23.0, 9.0));
-    vec3 sc = signColor(sh);
-    float lettering = step(0.55, vnoise(vec2(u * 6.0, v * 22.0) + sh * 100.0));
-    col = mix(col, sc * (0.55 + 0.45 * lettering) * (0.8 + 0.4 * n2), 0.9 * detail);
-    rough = 0.7;
-    emit += sc * 0.05 * uNight * detail;
+    vec3 boardCol = sh < 0.56 ? vec3(0.74, 0.72, 0.66) : signColor(fract(sh * 7.13));
+    bool lightBoard = sh < 0.56 || (sh >= 0.56 && fract(sh * 7.13) > 0.47 && fract(sh * 7.13) < 0.64);
+    // two rows of lettering: dashes of glyph-sized blocks with gaps between words (a texture, not real words)
+    float rows = signH > 0.86 ? 2.0 : 1.0;
+    float ry = (v - sbBot) / signH * rows;
+    float rowF = fract(ry);
+    float glyphRow = smoothstep(0.16, 0.24, rowF) * (1.0 - smoothstep(0.66, 0.74, rowF));
+    float cellU = u * 10.0;
+    float cellI = floor(cellU);
+    float gOn = step(0.30, hash12(vec2(cellI + floor(ry) * 17.0, bi * 3.0 + seedA * 41.0)));
+    float gFill = smoothstep(0.10, 0.18, fract(cellU)) * (1.0 - smoothstep(0.72, 0.80, fract(cellU)));
+    float margin = 1.0 - smoothstep(bayW * 0.5 - 0.42, bayW * 0.5 - 0.30, abs(bx));
+    float text = glyphRow * gOn * gFill * margin * detail;
+    vec3 ink = lightBoard ? vec3(0.03, 0.03, 0.04) : vec3(0.70, 0.66, 0.55);
+    vec3 boardShade = boardCol * (0.86 + 0.14 * n2);
+    boardShade = mix(boardShade, ink, text * 0.85);
+    col = mix(col, boardShade, board * detail);
+    rough = mix(rough, 0.6, board * detail);
+    emit += boardCol * 0.06 * uNight * board * (1.0 - text);
+    // a striped cloth awning over about a third of the openings
+    if (hb2 < 0.34 && open) {
+      float aTop = openTop, aBot = openTop - 0.70 + 0.05 * abs(sin(u * 12.5));
+      float aw = smoothstep(aBot - 0.01, aBot + 0.01, v) * (1.0 - smoothstep(aTop - 0.005, aTop + 0.005, v)) * (1.0 - pMask) * (1.0 - smoothstep(bayW * 0.5 - pillarW * 0.5 - 0.02, bayW * 0.5 - pillarW * 0.5 + 0.02, abs(bx)));
+      float st = step(0.5, fract(u / 0.26));
+      vec3 c1 = hb < 0.5 ? vec3(0.42, 0.05, 0.04) : (hb < 0.75 ? vec3(0.05, 0.16, 0.09) : vec3(0.07, 0.10, 0.28));
+      vec3 awCol = mix(c1, vec3(0.62, 0.58, 0.50), st) * (0.7 + 0.3 * smoothstep(aBot, aTop, v));
+      col = mix(col, awCol, aw * detail);
+      inside *= 1.0 - aw;
+      rough = mix(rough, 0.85, aw);
+      // shadow on the goods under the cloth
+      col *= 1.0 - 0.45 * (1.0 - smoothstep(aBot - 0.5, aBot, v)) * step(aBot - 0.5, v) * step(v, aBot) * inside;
+    }
+    // projecting chhajja: slab face with the dark shadow line under it
+    float slabTop = groundH, slabBot = groundH - chhajjaH;
+    float chh = smoothstep(slabBot - 0.01, slabBot + 0.01, v) * (1.0 - smoothstep(slabTop - 0.01, slabTop + 0.01, v));
+    col = mix(col, trim * 0.98, chh * detail);
+    col *= 1.0 - 0.45 * smoothstep(slabBot - 0.16, slabBot, v) * step(v, slabBot) * detail;
   }
 
   // ---- mouldings: string course above ground floor and under the parapet
@@ -220,14 +310,8 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   vec2 g = vec2(0.0);
   if (openKind > 0.0 && detail > 0.05) {
     float e = 0.035;
-    vec2 pp = vec2(bx, openKind == 2.0 ? v - 0.12 : (ground ? (openKind == 3.0 ? v : v - 1.05) : fv - 0.85));
-    float ww = openKind == 2.0 ? bayW * 0.82 : (openKind == 3.0 ? 1.05 : 0.8);
-    float hh = openKind == 2.0 ? groundH * 0.80 : (openKind == 3.0 ? 2.1 : 1.05);
-    if (!ground) { ww = min(bayW * 0.46, 1.05) * (0.9 + 0.2 * hb); hh = 1.35 + 0.35 * hb2; }
-    float pt = openKind == 2.0 ? 1.0 : 0.0;
-    if (!ground) pt = (heritage || bazaar) ? 1.0 : (hb > 0.5 ? 1.0 : 0.0);
-    float dx = sdArch(pp + vec2(e, 0.0), ww, hh, pt) - sdArch(pp - vec2(e, 0.0), ww, hh, pt);
-    float dy = sdArch(pp + vec2(0.0, e), ww, hh, pt) - sdArch(pp - vec2(0.0, e), ww, hh, pt);
+    float dx = sdArch(opP + vec2(e, 0.0), opW, opH, opPt) - sdArch(opP - vec2(e, 0.0), opW, opH, opPt);
+    float dy = sdArch(opP + vec2(0.0, e), opW, opH, opPt) - sdArch(opP - vec2(0.0, e), opW, opH, opPt);
     float ring = (1.0 - smoothstep(0.0, 0.12, abs(sd - 0.02)));
     g = -vec2(dx, dy) / (2.0 * e) * ring * 0.9 * detail;
   }

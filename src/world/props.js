@@ -108,17 +108,22 @@ export function makeChhatriGeometry() {
   return b.build();
 }
 
+/** Twin-arm street lamp (the decorative poles of Johari Bazaar have two arms; the heads are a separate mesh so they can glow). */
 export function makeLampPostGeometry() {
   const b = new PB();
-  b.cyl(0, 0, 0, 0.09, 0.055, 5.2, 8, [0.06, 0.06, 0.065]);
-  b.box(0.45, 5.1, 0, 1.0, 0.06, 0.06, [0.06, 0.06, 0.065]);
-  b.box(0.9, 5.05, 0, 0.36, 0.1, 0.16, [0.07, 0.07, 0.075]);
+  const iron = [0.06, 0.06, 0.065];
+  b.cyl(0, 0, 0, 0.09, 0.055, 5.2, 8, iron);
+  b.box(0, 5.28, 0, 0.2, 0.26, 0.2, [0.08, 0.06, 0.05]); // collar where the arms meet the pole
+  for (const s of [1, -1]) {
+    b.box(0.45 * s, 5.1, 0, 1.0, 0.06, 0.06, iron);
+    b.box(0.9 * s, 5.05, 0, 0.36, 0.1, 0.16, [0.07, 0.07, 0.075]);
+  }
   return b.build();
 }
 export function makeLampHeadGeometry() {
-  const g = new THREE.BoxGeometry(0.32, 0.05, 0.14);
-  g.translate(0.9, 4.98, 0);
-  return g;
+  const b = new PB();
+  for (const s of [1, -1]) b.box(0.9 * s, 4.98, 0, 0.32, 0.05, 0.14, [1, 1, 1], [1, 1, 1], 63);
+  return b.build();
 }
 
 /** Low-poly Indian street tree (neem / peepal style): trunk + three lumpy canopy blobs. */
@@ -207,5 +212,66 @@ export class InstancePool {
 
   get used() {
     return this.capacity - this.free.reduce((s, f) => s + f[1] - f[0], 0);
+  }
+}
+
+/** One shared LineSegments buffer for the overhead wires of every detail tile; tiles take a contiguous range of vertices, like InstancePool. */
+export class LinePool {
+  constructor(capacityVerts, material, name = 'wires') {
+    this.capacity = capacityVerts;
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(capacityVerts * 3).fill(-1e5); // unused vertices sit far below the world (zero-length, invisible)
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setDrawRange(0, 0);
+    this.mesh = new THREE.LineSegments(g, material);
+    this.mesh.name = name;
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    this.free = [[0, capacityVerts]];
+    this.high = 0;
+  }
+  alloc(n) {
+    n = Math.ceil(n / 2) * 2;
+    for (let i = 0; i < this.free.length; i++) {
+      const [s, e] = this.free[i];
+      if (e - s >= n) {
+        this.free[i] = [s + n, e];
+        if (this.free[i][0] === this.free[i][1]) this.free.splice(i, 1);
+        this.high = Math.max(this.high, s + n);
+        this.mesh.geometry.setDrawRange(0, this.high);
+        return { start: s, count: n };
+      }
+    }
+    return null;
+  }
+  /** arr: x,y,z per vertex in tile-local metres; (ox, oz) is the tile origin */
+  write(r, arr, ox, oz) {
+    const n = Math.min(r.count, arr.length / 3);
+    for (let i = 0; i < n; i++) {
+      this.pos[(r.start + i) * 3] = ox + arr[i * 3];
+      this.pos[(r.start + i) * 3 + 1] = arr[i * 3 + 1];
+      this.pos[(r.start + i) * 3 + 2] = oz + arr[i * 3 + 2];
+    }
+    this._dirty(r);
+  }
+  release(r) {
+    if (!r) return;
+    this.pos.fill(-1e5, r.start * 3, (r.start + r.count) * 3);
+    this._dirty(r);
+    this.free.push([r.start, r.start + r.count]);
+    this.free.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const f of this.free) {
+      const last = merged[merged.length - 1];
+      if (last && last[1] === f[0]) last[1] = f[1];
+      else merged.push([...f]);
+    }
+    this.free = merged;
+  }
+  _dirty(r) {
+    const a = this.mesh.geometry.attributes.position;
+    a.addUpdateRange(r.start * 3, r.count * 3);
+    a.needsUpdate = true;
   }
 }

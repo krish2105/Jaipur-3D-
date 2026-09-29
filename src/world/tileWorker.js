@@ -3,6 +3,7 @@ import { buildTileGeometry, RoadIndex } from './buildingGeometry.js';
 import { buildRoadGeometry } from './roadGeometry.js';
 import { HeightSampler, FlatSampler } from './heightSampler.js';
 import { isExcludedFull } from './landmarks/plan.js';
+import { buildWires } from './wires.js';
 
 let sampler = new FlatSampler(0);
 let exclude = null; // footprints replaced by hand-modelled landmarks (ids, rings, discs, model footprints)
@@ -68,6 +69,10 @@ self.onmessage = (e) => {
       }
       const own = (m.roads || []).find((r) => r && r.t[0] === m.ix && r.t[1] === m.iz);
       if (own) out.roads = buildRoadGeometry(own, sampler, TILE);
+      if (own && m.detail && m.b && m.b.b.length) {
+        const wx = m.ix * TILE, wz = m.iz * TILE;
+        out.wires = buildWires(m.b, own, (x, z) => sampler.heightAt(wx + x, wz + z));
+      }
       if (m.misc) {
         const ox = m.ix * TILE, oz = m.iz * TILE;
         const pl = (arr, extra) => {
@@ -91,6 +96,7 @@ self.onmessage = (e) => {
     const add = (g) => { if (!g) return; for (const k of ['pos', 'nrm', 'uv', 'a1', 'a2', 'aR']) if (g[k]) transfer.push(g[k].buffer); if (g.idx) transfer.push(g.idx.buffer); if (g.inst) for (const a of Object.values(g.inst)) transfer.push(a.buffer); };
     add(out.bld);
     if (out.roads) add(out.roads);
+    if (out.wires) transfer.push(out.wires.buffer);
     if (out.trees) transfer.push(out.trees.buffer);
     if (out.lamps) transfer.push(out.lamps.buffer);
     self.postMessage(out, transfer);
