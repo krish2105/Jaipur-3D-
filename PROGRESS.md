@@ -9,8 +9,8 @@ Living log. A resumed session should read this first.
 | 1 | Scaffold, Vite build, perf overlay, tier detection | done |
 | 2 | Data pipeline (Overpass + terrain, baking, chunking) | terrain: **done** (2.6 MB baked); OSM fetch+bake scripts done and unit-tested, **data BLOCKED** (see below) |
 | 3 | Terrain, streets, OSM buildings, real-metre facades | **code done + verified on synthetic lab district**; real-city output waits on OSM data |
-| 4 | Hand-modelled landmarks, Amer/Nahargarh silhouettes | pending |
-| 5 | Sky, sun, moon, materials, time of day | pending |
+| 4 | Hand-modelled landmarks, Amer/Nahargarh silhouettes | **partial**: Hawa Mahal (exactly 953 instanced windows), Jantar Mantar, Jal Mahal modelled + tested; NOT yet wired into the scene; City Palace, gates, forts not started |
+| 5 | Sky, sun, moon, materials, time of day | **mostly done** (astronomy verified, sky LUT + twilight model, clouds, stars, moon, IBL, CSM, post); tuning ongoing |
 | 6 | Weather | pending |
 | 7 | Traffic + people (worker), birds, cows | pending |
 | 8 | Festival, night, kite modes | pending |
@@ -73,3 +73,33 @@ domain is reachable. The app shows an on-screen notice while the OSM chunks are 
 ## Known shortfalls
 
 (none recorded yet beyond the OSM blocker)
+
+
+## STOPPED HERE (session ended by the owner) - resume checklist
+
+State of `main` at this point: builds (`npm run build`), 30/30 unit tests pass (`npm test`), data 2.75 MB.
+
+What works and is verified by screenshots (docs/screenshots/):
+- terrain (real Terrarium data), Man Sagar water body, sky/atmosphere/clouds/fog/lighting, tier detection, perf overlay
+- the OSM city pipeline end-to-end on the synthetic lab district (`npm run build:lab`, see Phase 3 notes)
+
+What is NOT done (in priority order for a resumed session):
+1. **Allow `overpass-api.de`**, then `npm run fetch:osm && npm run bake:osm`, rebuild, look at the real city (nothing real has been seen yet).
+2. **Wire the landmarks in**: `src/world/landmarks/*` (Hawa Mahal, Jantar Mantar, Jal Mahal) exist and are unit-tested but nothing imports
+   them. Needs `landmarks/index.js` placing them at the sourced coordinates (docs/LANDMARK_FACTS.md) or the OSM positions, exclusion of the
+   overlapping OSM footprints in the tile worker, then screenshots. City Palace (Chandra Mahal 7 levels, Tripolia gate, Mubarak Mahal),
+   city gates + wall, Amer / Jaigarh / Nahargarh silhouettes still to be written (Jaigarh crest is at 26.9866 N 75.8319 E in the DEM).
+3. Phase 6 weather rendering (rain, wet-street planar reflection, lightning, dust) - state model exists in `src/weather/weather.js`, `uWet` hooks exist in shaders.
+4. Phase 7 traffic/people worker (IDM), birds, cows - needs the street graph from the OSM bake (`graph.json`).
+5. Phase 8 festival / night / kite modes (light grid, string lights, fireworks, kites).
+6. Phase 9 procedural spatial audio. 7. Phase 10 cinematic tour, free-fly + touch controls, compact monochrome UI (none exists yet:
+   only the perf overlay and `window.__jaipur` debug API).
+8. Phase 11 verification harness: `scripts/lib/session.mjs` + `scripts/shot.mjs` are the building blocks; still to write: the fixed-seed
+   matrix script, `scripts/check-budgets.mjs`, reviewer-subagent pass. Phase 12: full README.
+
+Known visual shortfalls (from my own review of the screenshots):
+- Terrain/haze still reads pale and low-contrast in wide shots; hills need more colour and contrast. The lab road surface is bland.
+- Cumulus shapes are decent at the high tier but grainy/blocky at low tier (4-step flat cloud mode); stars/moon not yet reviewed in a screenshot.
+- Lake outline comes from flat SRTM texels (0.45 km^2), smaller than the real Man Sagar; the OSM water polygon will replace it.
+- The sandbox software renderer auto-detects as the "low" tier; use `?tier=high` in shots to see the intended quality.
+- Landmark layouts (Jantar Mantar compound, Jal Mahal footprint 52x32 m, Hawa Mahal per-storey widths) are approximate; heights/counts follow sources.
