@@ -10,8 +10,8 @@ import { buildJalMahal } from './jalMahal.js';
 import { buildChandraMahal, buildMubarakMahal, buildGatehouse, poseFromBox } from './cityPalace.js';
 import { locate, hawaPose, buildExclusion, addFootprints, rectRing, orientedBox } from './plan.js';
 
-// model footprints used for suppression (metres); Hawa Mahal: facade width + storey overhangs, depth of plinth + rear block
-const HAWA = { width: 40, depth: 27.5 };
+// model footprints used for suppression (metres); Hawa Mahal: the whole complex (facade 36 m plus a wing of about 25 m on each side), depth of plinth + rear block
+const HAWA = { width: 92, depth: 27.5 };
 const GATE_MAX = { len: 60, dep: 26 }; // larger city_gate outlines stay as plain OSM buildings (they are compounds, not gatehouses)
 
 /**

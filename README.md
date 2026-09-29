@@ -25,7 +25,7 @@ All images are produced by `npm run shots` (fixed seeds; see [Verification](#ver
 npm install
 npm run dev          # http://127.0.0.1:5173
 npm run build        # -> dist/  (static; Vercel builds this on every push to main)
-npm test             # 125 unit tests (node --test)
+npm test             # 126 unit tests (node --test)
 ```
 
 The baked data is committed (`public/data`, 11.8 MB). To rebuild it from the sources: `npm run bake:terrain`, `npm run fetch:osm` (Overpass, ~25 min, cached in git-ignored `data-raw/`), `python3 -m pip install duckdb` once and `npm run fetch:overture` (about 3 minutes: the two Overture GeoParquet files that overlap the Walled City, read through DuckDB), then `npm run bake:osm`. Without `data-raw/overture/` the bake stays OSM-only and says so.
@@ -80,9 +80,9 @@ Terrarium tiles ─bake:terrain─▶ public/data/terrain/   (16-bit heights, ne
 
 | Tier | Target | Draw calls | Triangles | Texture MB | Geometries | Instances | Worst measured |
 |---|---|---|---|---|---|---|---|
-| High | 60 fps | 700 | 5.5 M | 320 | 400 | 30,000 | 313 / 5.25 M / 216 / 348 / 27,727 |
-| Medium | 60 fps | 480 | 3.2 M | 192 | 300 | 15,000 | 215 / 2.61 M / 144 / 232 / 14,827 |
-| Low (phones) | steady 30 fps | 260 | 1.0 M | 96 | 220 | 6,000 | 109 / 0.88 M / 34 / 130 / 5,508 |
+| High | 60 fps | 700 | 5.5 M | 320 | 400 | 30,000 | 313 / 5.20 M / 216 / 348 / 27,727 |
+| Medium | 60 fps | 480 | 3.2 M | 192 | 300 | 15,000 | 215 / 2.55 M / 144 / 232 / 14,827 |
+| Low (phones) | steady 30 fps | 260 | 1.0 M | 96 | 220 | 6,000 | 109 / 0.82 M / 34 / 130 / 5,508 |
 
 The 46k Overture footprints fit those budgets because of how they are drawn, not because a budget was raised: they are plain (no facade instances, no rooftop mumty, cornice only on street-facing walls), they exist only inside a per-tier radius (`overtureRadius`: 900 m Low, 800 m Medium, 1,200 m High), the Low tier draws them as bare extrusions (`overturePlain`), oriel instances no longer cast shadows or appear in the wet-street mirror and have a leaner mesh (243 -> 133 triangles), and the Medium oriel pool is 2,100 instead of 2,700.
 
@@ -94,7 +94,7 @@ Detection picks the tier from the GPU string, device class and memory; `?tier=` 
 
 | Command | What it proves |
 |---|---|
-| `npm test` | 125 unit tests: OSM bake and real-data shapes, Overture merge (conversion, de-duplication, street rejection, determinism, real baked chunks), landmark plan, geometry heights, IDM traffic, weather, astronomy (incl. moonless Diwali), light grid, kites, fireworks, festival layout on real facades, audio mixing model, camera maths, dynamic resolution |
+| `npm test` | 126 unit tests: OSM bake and real-data shapes, Overture merge (conversion, de-duplication, street rejection, determinism, real baked chunks), landmark plan, geometry heights, IDM traffic, weather, astronomy (incl. moonless Diwali), light grid, kites, fireworks, festival layout on real facades, audio mixing model, camera maths, dynamic resolution |
 | `npm run check:data` | baked data 11.8 MB, under the 30 MB budget, no chunk above 4 MB |
 | `npm run check:budgets` | per-tier draw calls / triangles / texture MB / geometries / instances in the worst views |
 | `npm run check:audio` | in real Chrome: no sound before a gesture, weather / time / altitude change the measured spectrum, panning direction, boom and thunder delays (distance / 343 m/s), mute (18 checks) |
@@ -120,7 +120,7 @@ Detection picks the tier from the GPU string, device class and memory; `?tier=` 
 
 - **Not photographic.** An independent reviewer scored the screenshots at roughly 20-25 % of the way to photographs, and a second, photo-based review (16 real CC-licensed photographs of Jaipur, credits in [docs/REFERENCE_PHOTOS.md](docs/REFERENCE_PHOTOS.md)) scored Hawa Mahal, bazaar streets, night lighting, colour, Jal Mahal and Jantar Mantar 2 / 5, Amer and street life 1 / 5: strong sky, weather and festival lighting; weak architecture (blocky, repeated facades, none of the carved detail), simple people / animals / vehicles, sparse street life and clutter, smooth hills. The photo review's cheap fixes (terracotta hue, white LED lamps, darker night sky, warm strip lights on the parapets, Hawa Mahal tier profile) are in; the rest is listed in [PROGRESS.md](PROGRESS.md).
 - **The bazaar blocks are now filled with real Overture footprints, but as plain boxes with a painted frontage**: heights are inferred (about three storeys everywhere), roofs are flat, the ML-traced outlines are approximate. Road-facing shop walls have pillars, white signboards, awnings, a chhajja and louvre-shuttered windows drawn in the shader (they do not project or cast shadows), overhead wires are generated across streets that have facades on both sides, and the lamps have two arms; there are no railings, jaali screens or corner chhatri towers yet (see [PROGRESS.md](PROGRESS.md)). Overture footprints exist only within a per-tier radius of the camera; beyond it the city is OSM-only as before. Nothing is invented: every filler building is a real footprint.
-- Hawa Mahal is a stylised pyramid of five storeys with 953 windows (the count is a documented figure), not a photographic facade; forts are simple masses on smooth SRTM hills; no building collision (only terrain) in free-fly.
+- Hawa Mahal is modelled from photographs as five rows of projecting oriel bays (9 / 9 / 9 / 7 / 5, counted by eye) with cupolas, white-framed pointed openings and exactly 953 small lattice cells (the count is a documented figure), flanked by two arcaded wings with striped awnings, a plain tall block and a tower with a chhatri; the white stucco filigree, the roofline pinnacles and the exact proportions are approximate, so it is a recognisable model, not a photographic facade; forts are simple masses on smooth SRTM hills; no building collision (only terrain) in free-fly.
 - Not verified: performance on phones or mid-range GPUs (only headroom on the M4 Pro and a 6x CPU throttle), the sound on real speakers by a person (the audio checks are measurements), any scene that has no photographic reference (kites, a Diwali market, a monsoon street: none could be found), colours (read off the photographs by eye, not sampled), and any browser other than Chrome.
 - WebGPU is not used (WebGL2 only). Sound needs a user gesture (browser rule); the synthesised call to prayer was deliberately not made.
 

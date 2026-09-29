@@ -20,7 +20,8 @@ Living log. A resumed session should read this first.
 | 12 | README, final push | **done** (README with architecture, data pipeline, controls, screenshots, budgets, licensing, honest limitations) |
 | 13 | Overture Maps footprints ("make it real" step 1) | **done** (45,185 real non-OSM footprints merged into the core zone, per-tier radius + lean geometry to stay in budget, attribution, tests; see Phase 13 notes) |
 | 14 | Bazaar frontage and street furniture | **done** (pillared shop frontage, white signboards, awnings, chhajja, louvre-shuttered windows, overhead wires, twin-arm lamps; see Phase 14 notes) |
-| 15-18 | Hawa Mahal rebuild, people, Amer / Jantar Mantar / Tripolia / Jal Mahal, photo re-review | not started (owner asked for them on 2026-09-30; order in the Phase 13 notes) |
+| 15 | Hawa Mahal rebuild | **done** (five rows of oriel bays with cupolas, 953 lattice cells, arcaded wings with awnings, tall block, tower, railing; see Phase 15 notes) |
+| 16-18 | People and motorbikes, Amer / Jantar Mantar / Tripolia / Jal Mahal, photo re-review | not started (owner asked for them on 2026-09-30; order in the Phase 13 notes) |
 
 ## RESOLVED (owner, 2026-09-30): OSM has no buildings for most of the Walled City's bazaar blocks
 
@@ -154,6 +155,13 @@ The owner asked for option 2 ("make real clone ... Overture footprints for build
 - **Gates after this phase**: tests 125, check:budgets Low 0.88 M / Medium 2.61 M / High 5.25 M triangles (draw calls 109 / 215 / 313, geometries 130 / 232 / 348 of 400; Medium instances 14,827 of 15,000 after the oriel pool went to 2,100), check:ui 45, check:audio 18, 56-image matrix with determinism.
 - **Not done (still the biggest gaps against the photos)**: awnings and signboards are painted, not geometry (so they do not project or cast shadows); railings on parapets and balconies; jaali screens; corner chhatri towers on the big frontages; per-building height variety (heights are inferred, all about three storeys); pillars are the same everywhere; the wide unmapped pavements on Johari Bazaar's west side leave those facades unfaced (they get no shop frontage because the street is farther than 7.7 m away).
 
+## Phase 15 notes (Hawa Mahal rebuild)
+
+- **What was modelled** (`src/world/landmarks/hawaMahal.js`, from the CC photos `hawa-east-2022` and `hawa-east-cc0`, all proportions approx and listed in `docs/LANDMARK_FACTS.md`): each of the five storeys is a row of projecting semi-octagonal oriel bays, **9 / 9 / 9 / 7 / 5** from the bottom (counted by eye; the two lower rows project little). A bay = corbel, sill band, canted body of three facets, lintel band, hood, ribbed cupola with a finial, three white-framed pointed openings and a green shutter door on the front facet. The **953 windows are 953 small lattice cells** (one instanced mesh, ~44 triangles each) laid out inside those openings: the storey totals still come from `windowCounts()` (proportional to storey width), then per bay, then per facet, spread over the rectangular part of each opening; a bay that cannot fit its share gets an extra row. Flanks: two low arcaded wings (about 25 m each, shop arches, upper jaali frames, striped red / cream awnings), a plain tall block with a chhatri on the left, a taller tower with a balcony crown, a chhatri and grids of small windows on the right; a paved apron and a black iron railing (posts, rails, pickets) about 3 m in front of the plinth. The suppression footprint for OSM / Overture buildings under the model is now the whole complex (92 m wide).
+- **Cost**: the model is 17.6 k triangles of body plus 953 x 44 for the cells = 59.5 k (it was ~132 k, mostly the 126-triangle window units), still no shadow casting for the cells. `check:budgets`: Low 0.82 M, Medium 2.55 M, High 5.20 M triangles.
+- **Tests**: bay counts, footprint width of the complex (85-100 m), triangle budget (body < 30 k, whole model < 80 k), determinism of the cell layout, cells stay on the bays; the existing "exactly 953", winding and height tests pass unchanged.
+- **Not done**: the white stucco filigree around every opening, roofline pinnacles, the second and third row of small domes between bays, the green shutter doors beyond the front facet, per-bay variation. The little cells read as a lattice from a distance and as a row of small arches (a balustrade) up close.
+
 ## Photo review (real photographs, owner-approved)
 
 - **What was done**: 16 CC0 / CC BY / CC BY-SA photographs of Jaipur were downloaded from Wikimedia Commons into a scratch folder outside the repo (credits and licences in `docs/REFERENCE_PHOTOS.md`; the images are not committed). A separate reviewer subagent opened all of them and 17 of our screenshots plus 6 new matching views (Jal Mahal, Amer, Jantar Mantar) and compared like for like. No photo of Jaipur kites, a Diwali market or a monsoon street could be found on Commons, so those scenes have no photographic reference. Three files did not show what their names say (hawa-street is a rotated portrait, pink-city-general is a street-level Johari Bazaar view, badi-chaupar shows Hawa Mahal across the road), so the "overall city" comparison could only judge colour.
@@ -176,7 +184,7 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 ## Known shortfalls (honest)
 
 - Building coverage: OSM + 46k Overture footprints inside the tier radius (Phase 13); beyond it OSM only. Heights: 99.8 % inferred. The frontage is plain massing (no pillars / signboards / awnings / wires yet). Overture outlines are ML-traced and approximate.
-- Hawa Mahal is a stylised pyramid: better than the first version (slim octagonal corner bays, projecting oriel units with white arch frames, per-window tint) but not a photographic facade; its rear block and the Saraogi block around it are approximations.
+- Hawa Mahal (Phase 15): recognisable oriel-bay model with wings, tower and railing, but not a photographic facade (no stucco filigree, pinnacles or per-bay variation); its rear block and the Saraogi block around it are approximations.
 - Jantar Mantar: only the 5 instruments OSM maps are placed; Jai Prakash, Laghu Samrat etc. are absent because their positions are not in any opened source.
 - Chandra Mahal / Mubarak Mahal / gatehouse proportions and storey heights are *approx* (footprints are real).
 - Forts: Amer / Jaigarh / Nahargarh are OSM buildings and 6 m wall solids on smooth SRTM hills in a generic limewash colour; no crenellations, no bespoke gate towers, wall colour not plumbed to the shader. Poor silhouette from a distance. Maota Lake is now painted from the OSM water polygon, the land is otherwise bare.
@@ -185,7 +193,7 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 - Other wall kinds (`barrier=wall`, fences, retaining walls) and OSM `water`/`green` polygons from the `m_*` chunks are not rendered as geometry (water and green are in the land-cover raster).
 - Lamps: OSM has almost no `street_lamp` nodes in the area (0 instances), so night street lighting cannot come from OSM lamps; Phase 8 will use the street graph.
 - Facade shader `c` (building colour) is baked but not used by the shader.
-- Budget headroom (`npm run check:budgets`, Phase 13): Low 0.88 M of 1.00 M, Medium 2.61 M of 3.20 M (instances 14,827 of 15,000), **High 5.25 M of 5.50 M**: the worst view everywhere is the monsoon drone (mirror + shadows + rain). New geometry (Hawa Mahal rebuild, facade upgrade, more people) needs its own LOD or a smaller `overtureRadius` first.
+- Budget headroom (`npm run check:budgets`, Phase 13): Low 0.82 M of 1.00 M, Medium 2.55 M of 3.20 M (instances 14,827 of 15,000), **High 5.20 M of 5.50 M**: the worst view everywhere is the monsoon drone (mirror + shadows + rain). New geometry (Hawa Mahal rebuild, facade upgrade, more people) needs its own LOD or a smaller `overtureRadius` first.
 - WebGPU is not used (WebGL2 only). Real-GPU frame rates were first measured in Phase 7 (M4 Pro only; phones and mid-range GPUs are untested, see Phase 7 notes).
 
 - Weather: rain has no audio yet (Phase 9); planar reflection only mirrors roads (terrain plazas just darken); lightning illumination is one directional light; moving dust sprites are subtle next to the fog; cloud edges are still grainy at the low/medium step counts; rain does not stop under roofs.

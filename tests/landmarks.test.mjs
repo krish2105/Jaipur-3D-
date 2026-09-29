@@ -65,3 +65,25 @@ test('landmark meshes: triangle winding agrees with normals (no inside-out faces
     assert.ok(bad / total < 0.015, `${name}: ${bad}/${total} triangles wound against their normals`);
   }
 });
+
+import { BAYS } from '../src/world/landmarks/hawaMahal.js';
+test('Hawa Mahal (Phase 15): oriel bays per storey, flanks, triangle budget, deterministic', () => {
+  assert.deepEqual(BAYS, [9, 9, 9, 7, 5]);
+  const mat = new THREE.MeshStandardMaterial();
+  const a = buildHawaMahal(mat, mat), b2 = buildHawaMahal(mat, mat);
+  const box = new THREE.Box3().setFromObject(a);
+  assert.ok(box.max.x - box.min.x > 85 && box.max.x - box.min.x < 100, 'facade plus a wing on each side: ' + (box.max.x - box.min.x));
+  const inst = a.children.find((c) => c.isInstancedMesh), body = a.children.find((c) => c.isMesh && !c.isInstancedMesh);
+  const tris = (o) => (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+  assert.ok(tris(body) < 30000, 'body triangles ' + tris(body));
+  assert.ok(tris(body) + tris(inst) * inst.count < 80000, 'whole model (windows included) stays cheap: ' + (tris(body) + tris(inst) * inst.count));
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Vector3();
+  const inst2 = b2.children.find((c) => c.isInstancedMesh);
+  for (let i = 0; i < inst.count; i += 37) {
+    inst.getMatrixAt(i, m); p.setFromMatrixPosition(m);
+    inst2.getMatrixAt(i, m); q.setFromMatrixPosition(m);
+    assert.ok(p.distanceTo(q) < 1e-9, 'deterministic layout');
+    assert.ok(p.z > -2.6 && p.z < 1.6, 'cells stay on the bays, not floating: z ' + p.z);
+    assert.ok(p.y > 4 && p.y < 26, 'cells between the plinth and the crown: y ' + p.y);
+  }
+});
