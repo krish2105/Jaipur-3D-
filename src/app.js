@@ -23,6 +23,10 @@ import { PlanarReflection } from './render/reflection.js';
 import { Life } from './sim/life.js';
 import { Festival } from './festival/festival.js';
 import { AudioSystem } from './audio/audio.js';
+import { CameraRig } from './camera/rig.js';
+import { Tour } from './camera/tour.js';
+import { polylineLengths, polylineAt } from './camera/math.js';
+import { UI } from './ui/ui.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -132,6 +136,13 @@ export class App {
     window.addEventListener('keydown', (e) => { if (e.key === '`' || (e.key === 'p' && !e.ctrlKey && !e.metaKey)) this.overlay.toggle(); });
     window.addEventListener('resize', () => this.resize());
     this.resize();
+
+    // camera rig (free-fly / walk, keyboard + mouse + touch), cinematic tour and the compact UI; the screenshot harness (?shot) owns the camera and hides the UI unless ?ui
+    this.rig = new CameraRig({ app: this, canvas: this.canvas });
+    this.rig.attach();
+    this.tour = new Tour(this);
+    this.rig.onUserInput = () => { if (this.tour.running) this.tour.stop(); };
+    if (!this.q.has('shot') || this.q.has('ui')) this.ui = new UI({ app: this, root: document.getElementById('ui') });
 
     this.loop = new Loop({
       fixedDt: 1 / 30,
@@ -300,6 +311,8 @@ export class App {
 
   frame(dt, alpha) {
     const cam = this.camera;
+    this.tour?.update(dt);
+    this.rig?.update(dt);
     for (const h of this.frameHooks) h(dt, this);
     for (const s of this.systems) s.frame?.(dt, alpha, this);
 
@@ -360,6 +373,7 @@ export class App {
     });
     r.info.reset();
     this.overlay.update(performance.now());
+    this.ui?.frame(dt);
   }
 
   updateWetUniforms() {
@@ -390,5 +404,41 @@ export class App {
   start() {
     if (this.q.has('shot')) return; // harness drives frames itself
     this.loop.start();
+    // the tour opens the experience (interruptible: any movement input hands over to free-fly); ?tour=0 skips it
+    if (this.q.get('tour') !== '0' && this.tour) {
+      const go = () => { if (!this.rig.active && !this.tour.running) this.tour.start(); };
+      if (this.festival) this.festival.ready.then(go, go); else go(); // the shots use the street routes / festival layout computed in the worker
+    }
+  }
+
+  /** teleport to a named viewpoint (UI): hawa | jantar | jal | palace | amer | badi | johari */
+  goToView(name) {
+    if (this.tour && this.tour.running) this.tour.stop();
+    const items = this.landmarkPlan ? this.landmarkPlan.items : [], man = (this.city && this.city.manifest) || {}, g = (x, z) => this.hf.heightAt(x, z);
+    const put = (px, pz, ph, lx, lz, lh, fov = 60) => {
+      this.setView([px, g(px, pz) + ph, pz], [lx, g(lx, lz) + lh, lz], fov);
+      this.life?.teleport(this);
+      this.rig.syncFromCamera();
+      if (this.rig.mode === 'tour') this.rig.setMode('fly');
+    };
+    const it = (kind) => items.find((k) => k.kind === kind);
+    const lm = (key) => man.landmarks && man.landmarks[key] && man.landmarks[key][0];
+    switch (name) {
+      case 'hawa': { const h = it('hawa'); if (h) put(h.x + h.nx * 52 + h.ux * 10, h.z + h.nz * 52 + h.uz * 10, 5, h.x, h.z, 13, 58); break; }
+      case 'jantar': { const j = it('jm'); if (j) put(j.x + 70, j.z + 85, 22, j.x, j.z, 3, 60); break; }
+      case 'jal': { const j = it('jal'); if (j) put(j.x - 90, j.z + 8, 9, j.x, j.z, 8, 56); break; }
+      case 'palace': { const c = it('chandra') || lm('cityPalace'); if (c) put(c.x + 95, c.z + 110, 38, c.x, c.z, 14, 60); break; }
+      case 'amer': { const a = lm('amerFort'); if (a) put(a.x - 380, a.z + 300, 120, a.x, a.z, 35, 55); break; }
+      case 'badi': put(45, 230, 5, 21, 100, 8, 64); break;
+      case 'johari': {
+        const r = this.festival && this.festival.routes && this.festival.routes.johari;
+        if (r && r.length >= 4) {
+          const cum = polylineLengths(r), a = polylineAt(r, cum, Math.min(120, cum[cum.length - 1] * 0.3)), b = polylineAt(r, cum, Math.min(160, cum[cum.length - 1] * 0.4) + 25);
+          put(a.x, a.z, 3.2, b.x, b.z, 7, 64);
+        } else put(-40, 300, 3.2, -40, 520, 7, 64);
+        break;
+      }
+      default: break;
+    }
   }
 }

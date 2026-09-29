@@ -41,6 +41,7 @@ export class Festival {
     this.landK = 0;           // floodlit landmarks 0..1
     this.fl = 0;              // festival bulbs on (strength x after-dark)
     this.layout = null;
+    this.routes = {};
     this.error = null;
     this.group = new THREE.Group();
     this.group.name = 'festival';
@@ -99,6 +100,7 @@ export class Festival {
 
   _apply(m) {
     this.layout = m;
+    this.routes = m.routes || {};
     this.glow.setData(m.bulbs);
     this.lampLayer.setData(m.lamps);
     this.wires.setData(m.spans);

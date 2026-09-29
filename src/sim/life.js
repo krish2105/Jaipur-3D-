@@ -70,6 +70,8 @@ export class Life {
     this.inflight = 0;
     this.pendingSteps = 0;
     this.speedScale = 1;
+    this.enabled = true;      // UI: street life on / off
+    this.densityScale = 1;    // UI: Light 0.4 / Normal 1 / Busy 1.6
     this.error = null;
     this.stats = { veh: 0, ped: 0, cow: 0, bird: 0, worker: null };
     this._fr = new THREE.Frustum();
@@ -129,14 +131,21 @@ export class Life {
   }
 
   /** fixed-step hook: ask the worker for the next steps */
+  /** UI density: 0 switches street life off (nothing simulated or drawn), otherwise a multiplier on the time-of-day density */
+  setDensity(v) {
+    if (v <= 0) { this.enabled = false; return; }
+    this.enabled = true;
+    this.densityScale = v;
+  }
+
   update(dt, app) {
-    if (!this.worker || this.error) return;
+    if (!this.worker || this.error || !this.enabled) return;
     const c = app.clock;
     if (!c.paused) this.pendingSteps += Math.max(1, Math.min(4, Math.round(c.speed)));
     this.speedScale = Math.max(1, Math.min(4, Math.round(c.speed)));
     if (this.inflight >= 2 || this.pendingSteps <= 0) return;
     const w = app.weather.s;
-    const density = Math.max(0.15, 1 - 0.55 * Math.min(1, w.rain * 1.2) - 0.4 * w.dust * w.storm);
+    const density = Math.max(0.15, 1 - 0.55 * Math.min(1, w.rain * 1.2) - 0.4 * w.dust * w.storm) * this.densityScale;
     this.worker.postMessage({ type: 'step', n: Math.min(6, this.pendingSteps), hour: c.hours, cam: this._cam(app.camera), density, tag: 'live' });
     this.pendingSteps = Math.max(0, this.pendingSteps - 6);
     this.inflight++;
@@ -163,6 +172,11 @@ export class Life {
   frame(dt, app) {
     const snap = this.snap;
     if (!snap) return;
+    if (!this.enabled) {
+      for (const k of [...this.veh, this.man, this.woman, this.turban, this.cow, this.bird]) { k.k = 0; k.mesh.count = 0; k.mesh.visible = false; }
+      this.stats.veh = this.stats.ped = this.stats.cow = this.stats.bird = 0;
+      return;
+    }
     const cam = app.camera;
     this._pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this._fr.setFromProjectionMatrix(this._pm);

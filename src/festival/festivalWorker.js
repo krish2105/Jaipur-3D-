@@ -3,6 +3,7 @@
 import { StreetGraph } from '../sim/graph.js';
 import { FootprintIndex } from './footprints.js';
 import { planLamps, planFestival } from './layout.js';
+import { chainRoute } from '../camera/routes.js';
 import { HeightSampler, FlatSampler } from '../world/heightSampler.js';
 
 async function json(url) {
@@ -31,8 +32,10 @@ self.onmessage = async (e) => {
     // rooftop anchors for kite flyers: real footprints near the walled city, big enough to stand on
     const roofs = [];
     for (const b of fp.roofs) if (b.area >= 40 && Math.hypot(b.x, b.z) < m.roofRadius) roofs.push(b.x, b.z, b.h, b.area);
-    const out = { type: 'plan', lamps, bulbs: fest.bulbs, sources: fest.sources, spans: fest.spans, roofs: Float32Array.from(roofs), stats: { ...fest.stats, lamps: lamps.length / 3, roofs: roofs.length / 4, segments: fp.segmentCount, ms: Math.round(performance.now() - t0) } };
-    self.postMessage(out, [out.lamps.buffer, out.bulbs.buffer, out.sources.buffer, out.spans.buffer, out.roofs.buffer]);
+    // camera routes along the main bazaars (real OSM street polylines) for the cinematic tour
+    const routes = { johari: chainRoute(graph, /johari/i), tripolia: chainRoute(graph, /tripolia/i), chandpol: chainRoute(graph, /chandpol/i), bapu: chainRoute(graph, /bapu\s*baz/i) };
+    const out = { type: 'plan', routes, lamps, bulbs: fest.bulbs, sources: fest.sources, spans: fest.spans, roofs: Float32Array.from(roofs), stats: { ...fest.stats, lamps: lamps.length / 3, roofs: roofs.length / 4, segments: fp.segmentCount, ms: Math.round(performance.now() - t0) } };
+    self.postMessage(out, [out.lamps.buffer, out.bulbs.buffer, out.sources.buffer, out.spans.buffer, out.roofs.buffer, ...Object.values(routes).map((r) => r.buffer)]);
   } catch (err) {
     self.postMessage({ type: 'error', error: String(err && err.stack ? err.stack : err) });
   }

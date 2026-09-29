@@ -15,7 +15,7 @@ Living log. A resumed session should read this first.
 | 7 | Traffic + people (worker), birds, cows | **done** (IDM traffic, bazaar-weighted pedestrians, cows, pigeon flocks; verified in tests, budgets and live on the real GPU; kites deferred to Phase 8) |
 | 8 | Festival, night, kite modes | **done** (light grid, generated street lamps, festival strings / roofline lights / diyas on real OSM facades, floodlit landmarks, fireworks, kites with string physics; Diwali moonless; see Phase 8 notes) |
 | 9 | Spatial audio | **done** (procedural Web Audio, gesture-unlocked, mute, spatialised, weather / time / festival responsive; measured in a real browser, see Phase 9 notes) |
-| 10 | Cinematic tour, free-fly, touch, compact UI | pending |
+| 10 | Cinematic tour, free-fly, touch, compact UI | **done** (5-shot tour on real anchors, fly / walk, keyboard + mouse + touch stick, compact monochrome dock; measured in Chrome incl. a touch phone, see Phase 10 notes) |
 | 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers (incl. wet and dust worst cases); matrix + reviewer pass pending |
 | 12 | README, final push | pending |
 
@@ -112,6 +112,15 @@ Per the project rules nothing is invented or "filled in". Options (none has been
 - **Bugs the measurements caught** (fixed): the crowd wobble was wired into the layer's gain param (adds instead of scaling: a silent layer still sounded and the gain swung negative) - now an in-series modulator; horns and calls used a decaying envelope (too quiet) - now attack / hold / release; wind had no low-frequency roar (added a low layer); the harness had to refresh the environment (`renderStill`) before reading time-of-day.
 - **Not done / honest limits**: no azan (synthesising a call to prayer would be a poor and disrespectful imitation; `prayerTimes` stays unused), no voices or speech, no per-material footsteps, no occlusion (sound does not get muffled by buildings), the drums and bells are generic art direction (approx), engines follow the nearest vehicles by rank (not by identity), and nothing has been listened to on real speakers by a person: the checks are measurements, not a taste test.
 
+## Phase 10 notes (camera, tour, UI)
+
+- **Rig** (`src/camera/rig.js`, `math.js`): free-fly (WASD / arrows, E or Space up, Q or C down, Shift fast, Ctrl slow, drag to look, wheel = speed) and walking (eye height 1.7 m, follows terrain); terrain clamp 2.5 m in fly. Touch: left 42 % of the screen is a virtual move stick, the rest looks, hold buttons for up / down. No building collision (only terrain), stated as a limitation. The screenshot harness (`?shot`) owns the camera and the rig stays passive there.
+- **Tour** (`src/camera/tour.js`): five shots flown terrain-following along paths anchored on real data - Sunrise over Hawa Mahal (starts 14 min before the computed sunrise of 25 Oct 2026, 60x clock; the facade faces east), Johari Bazaar (drift along the chained OSM street polyline, 3.3 m up), Diwali night (densest festival street, then rises over the bazaars, 8 Nov 2026, moonless), Monsoon dusk (orbit of Chandra Mahal, 15 Aug 2026, sun 1.2 -> -1.6 deg at 20x), Jal Mahal -> Amer Fort into the golden hour (sun 10.7 -> 1.9 deg at 40x, ends looking back toward the city). Each shot sets date / weather / festival, teleports, waits for tiles, fades in / out. It starts on load (interruptible; `?tour=0` skips), any movement input hands over to free-fly, `T` toggles, `N` skips a shot. Shots whose anchor is missing from the data are skipped.
+- **UI** (`src/ui/ui.js`, `style.css`): bottom dock with Camera (Tour / Fly / Walk + 7 viewpoints), Time (slider, pause / 1x / 60x / 600x / 3600x, date presets), Weather (5 presets), Traffic (Off / Light / Normal / Busy), Festival (Off / Diwali / Sankranti + kites toggle), Sound (on / volume), Quality (Low / Medium / High reloads with `?tier=`, stats overlay); a time readout, tour title cards, help sheet (`H`), monochrome inline-SVG icons, 44 px minimum targets, safe-area aware, one popover at a time. Keys: `1-5` weather, `[` `]` time, `M` sound, `P` stats.
+- **Verified in Chrome** (`npm run check:ui`, 49 checks): W flew 30 m in 0.9 s, Shift 105 m; E climbed 7 -> 23 m, Q stopped at exactly 2.50 m above ground; a 200 px drag turned 0.64 rad; walking held 1.70 m; every panel changed the simulation (time slider, monsoon, traffic off draws nothing, Diwali moves the clock to 8 Nov, kites, sound builds the graph); all five shots ran with the intended date / weather / festival and stayed above terrain; the Diwali shot is moonless (illumination 0.006); on a 390 x 844 touch phone (CDP touch events) the stick moved 21.9 m, a 100 px look drag turned 0.48 rad, the up button climbed 5 -> 27 m, all buttons >= 44 px, no horizontal overflow, panels fit the screen; no console errors. Screenshots: `shots-tmp/ui/` (git-ignored).
+- Bug the checks caught (fixed): the first monsoon shot started 22 min before sunset (sun +4 deg: not dusk); it now starts 8 min before and runs 20x into twilight. The end-of-shot sun altitudes are computed from the clock, not sampled after a time jump.
+- Known shortfalls: the tour is authored (waypoints), not adaptive to what streamed in, so a slow network can show low-detail tiles at a cut; the Sunrise shot flies above the roofs across the street (12-44 m), not at street level; Johari Bazaar looks right only where OSM has buildings; no gamepad; no pointer-lock mouse look; quality switch reloads the page.
+
 ## Task A verdict (real Walled City vs real photos, critical)
 
 Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
@@ -140,5 +149,5 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 
 1. Owner decision on the building-coverage options above.
 2. (Phase 7 done.)
-4. (Phase 8 done.) 5. (Phase 9 done.) 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
+4. (Phase 8 done.) 5. (Phase 9 done.) 6. (Phase 10 done.)
 7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.
