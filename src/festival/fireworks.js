@@ -140,6 +140,7 @@ export class Fireworks {
     this.pending = []; // rockets in flight: { due, x, y, z, kind, color }
     this.bursts = [];  // bursts that have gone off (for lights): { t0, x, y, z, color }
     this.events = [];  // audio events since the last drain: { t, x, y, z, kind }
+    this.launches = []; // rocket launches since the last drain (audio whistle): { t, x, y, z, dur }
     this.nextIn = 3;
     this.stats = { bursts: 0, particles: 0 };
     this.density = 0.5;
@@ -165,6 +166,7 @@ export class Fireworks {
     const i = this.head; this.head = (this.head + 1) % this.cap;
     this._write(i, x, gy + 2, z, this.time + delay, 0, v0, 0, T, 1.0, 0.75, 0.4, -1);
     this.pending.push({ due: this.time + delay + T, x, y: gy + 2 + h, z, kind, color });
+    this.launches.push({ t: this.time + delay, x, y: gy + 2, z, dur: T });
     this._flush();
   }
 
@@ -230,6 +232,13 @@ export class Fireworks {
     return out;
   }
 
+  /** take the rocket launches raised since the last call (audio) */
+  drainLaunches() {
+    const e = this.launches;
+    this.launches = [];
+    return e;
+  }
+
   /** take the burst events raised since the last call (audio) */
   drainEvents() {
     const e = this.events;
@@ -241,7 +250,7 @@ export class Fireworks {
 
   clear() {
     for (let i = 0; i < this.cap; i++) { this.aP0.array[i * 4 + 3] = -1e4; this.aV.array[i * 4 + 3] = 0.1; }
-    this.pending.length = 0; this.bursts.length = 0; this.events.length = 0;
+    this.pending.length = 0; this.bursts.length = 0; this.events.length = 0; this.launches.length = 0;
     this._flush();
     this.mesh.visible = false;
   }

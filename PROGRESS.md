@@ -14,7 +14,7 @@ Living log. A resumed session should read this first.
 | 6 | Weather | **done** (verified by stills on all tiers; see Phase 6 notes) |
 | 7 | Traffic + people (worker), birds, cows | **done** (IDM traffic, bazaar-weighted pedestrians, cows, pigeon flocks; verified in tests, budgets and live on the real GPU; kites deferred to Phase 8) |
 | 8 | Festival, night, kite modes | **done** (light grid, generated street lamps, festival strings / roofline lights / diyas on real OSM facades, floodlit landmarks, fireworks, kites with string physics; Diwali moonless; see Phase 8 notes) |
-| 9 | Spatial audio | pending |
+| 9 | Spatial audio | **done** (procedural Web Audio, gesture-unlocked, mute, spatialised, weather / time / festival responsive; measured in a real browser, see Phase 9 notes) |
 | 10 | Cinematic tour, free-fly, touch, compact UI | pending |
 | 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers (incl. wet and dust worst cases); matrix + reviewer pass pending |
 | 12 | README, final push | pending |
@@ -103,6 +103,15 @@ Per the project rules nothing is invented or "filled in". Options (none has been
 - **Budgets**: `check:budgets` now includes night / Diwali / Hawa Mahal night / kite views and **counts particle instances** (rain, glow, fireworks) in `instances`; all tiers pass (low 5,549 / 6,000 and medium 14,447 / 15,000 instances are close: new particle systems need a cut elsewhere).
 - Known shortfalls: light pools from generated lamps look round from the air; bulbs are sprites (no wire glow, no reflection on wet streets beyond the planar pass); kites are specks beyond ~150 m (real size); fireworks have no smoke; no shop-front lamps / signs at night beyond the facade shader; grid is 2D (light does not reach into courtyards or under roofs differently).
 
+## Phase 9 notes (audio)
+
+- **Procedural only** (`src/audio/`): no samples or files. `mix.js` is the pure, tested mixing model (`computeMix`: gains of every layer from clock hour, sun altitude, rain, wetness, wind, dust / storm, street-life counts near the camera, camera height, festival mode), event-rate models (horns, birds, crackers), nearest-source picking, speed-of-sound delays and the noise / patter / impulse generators. `audio.js` builds the Web Audio graph and schedules events.
+- **Beds**: city murmur, crowd (with syllabic wobble), traffic rumble, wind howl + low roar, rain hiss + a looped patter buffer, wet-road swish, crickets (night), kite-string hum. **Voices** (budget = `audioVoices` 24 / 16 / 10): nearest vehicles' engines (up to 7, follow the 7 nearest vehicles), horns per vehicle type, chirps / pigeon coos / crow calls, temple-bell-like strikes at dawn and dusk, dhol-like drum pattern in festival modes, Diwali crackers (with occasional strings), rocket whistles and fireworks booms delayed by distance / 343 m/s, thunder delayed by the bolt's simulated distance.
+- **Spatialisation**: the listener is the camera (position + orientation every frame); near voices use HRTF panners, far ones equal-power; a short street reverb on high / medium. **Autoplay**: nothing is built until the first click / tap / key press; `M` toggles mute; mute and volume persist in localStorage (guarded).
+- **Verified in Chrome** (`npm run check:audio`, real Web Audio, master-bus AnalyserNodes): no context before a gesture, a click builds the graph and it runs; noon vs night murmur 1.13e-4 vs 2.55e-5, crickets raise the night high band 7.0e-5 vs 3.1e-7 at noon; rain raises the high band 3.1e-4 vs 3.1e-7; the dust storm's low band 1.9e-3 vs 6.1e-4; up at 400 m the street murmur drops to 3.0e-5; a horn to the right is louder in the right ear (0.091 vs 0.050) and mirrored on the left (0.093 vs 0.051); a boom scheduled at +1.5 s starts at 1.52 s; thunder from an 800 m bolt starts at 2.35 s (800 / 343 = 2.33 s); mute drops the master to 0 and unmute restores it; no console problems.
+- **Bugs the measurements caught** (fixed): the crowd wobble was wired into the layer's gain param (adds instead of scaling: a silent layer still sounded and the gain swung negative) - now an in-series modulator; horns and calls used a decaying envelope (too quiet) - now attack / hold / release; wind had no low-frequency roar (added a low layer); the harness had to refresh the environment (`renderStill`) before reading time-of-day.
+- **Not done / honest limits**: no azan (synthesising a call to prayer would be a poor and disrespectful imitation; `prayerTimes` stays unused), no voices or speech, no per-material footsteps, no occlusion (sound does not get muffled by buildings), the drums and bells are generic art direction (approx), engines follow the nearest vehicles by rank (not by identity), and nothing has been listened to on real speakers by a person: the checks are measurements, not a taste test.
+
 ## Task A verdict (real Walled City vs real photos, critical)
 
 Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
@@ -131,5 +140,5 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 
 1. Owner decision on the building-coverage options above.
 2. (Phase 7 done.)
-4. (Phase 8 done.) 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
+4. (Phase 8 done.) 5. (Phase 9 done.) 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
 7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.

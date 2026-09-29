@@ -22,6 +22,7 @@ import { WeatherFx } from './weather/fx.js';
 import { PlanarReflection } from './render/reflection.js';
 import { Life } from './sim/life.js';
 import { Festival } from './festival/festival.js';
+import { AudioSystem } from './audio/audio.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -121,6 +122,10 @@ export class App {
       progress('festival');
       this.festival = new Festival({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, landmarkItems: this.landmarkPlan ? this.landmarkPlan.items : [], base: import.meta.env.BASE_URL });
     }
+
+    // procedural audio: builds its graph on the first click / tap / key press (browser autoplay rules); M mutes
+    if (!this.q.has('shot') && !this.q.has('mute')) { this.audio = new AudioSystem({ settings: s }); this.audio.attachGestureUnlock(window); }
+    else if (this.q.has('audio')) { this.audio = new AudioSystem({ settings: s }); }
 
     this.overlay = new PerfOverlay(this.perf, () => this.reportContext());
     if (this.q.has('perf')) this.overlay.toggle(true);
@@ -306,6 +311,7 @@ export class App {
     this.fx.frame(dt, this);
     this.life?.frame(dt, this);
     this.festival?.frame(dt, alpha, this);
+    this.audio?.frame(dt, this);
     this.lighting.update(this.env, dt);
     this.terrain.update(cam);
     this.updateVeg();
