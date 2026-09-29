@@ -8,7 +8,9 @@ const RAD = Math.PI / 180;
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export const SUN_IRRADIANCE = 6.2; // scene-linear direct sun strength at zenith (three DirectionalLight intensity)
-export const MOON_IRRADIANCE = 0.62;
+// A full moon lit the streets to nearly daylight-grey in the matrix review (21:30 on 24 Oct: mean luminance 0.49): the night exposure (7.6-9.8x) already
+// brightens everything, so the moon's own strength is kept low (art direction: real moonlight is ~1/40 of a lit street) so that lamps and lit windows stand out.
+export const MOON_IRRADIANCE = 0.16;
 
 export class EnvState {
   constructor() {

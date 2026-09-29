@@ -152,6 +152,13 @@ export class PostFX {
     this.h = h;
   }
 
+  /** change the MSAA sample count (re-allocates the HDR target); 0 = none, the composite then runs its light FXAA */
+  setMsaa(n) {
+    if (n === this.msaa) return;
+    this.msaa = n;
+    this._alloc(this.w, this.h);
+  }
+
   /** set internal render size in device pixels */
   setSize(w, h) {
     w = Math.max(2, Math.round(w));

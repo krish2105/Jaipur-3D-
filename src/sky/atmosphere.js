@@ -94,5 +94,10 @@ export function twilightParams(altDeg) {
   const e = exposureFor(altDeg, -90, 0, 0);
   const target = D / e;
   const phys = logInterp(PHYS_ZEN, effAlt);
-  return { effAlt, gain: target / phys };
+  // Real twilight is over by -18 deg. The LUT is evaluated at an effective elevation of about -9 deg, whose glow sits at the SUN'S azimuth, so without a fade
+  // a sky at sun -35 deg (the Diwali evening) still showed a pink sunset band at the horizon (found in the screenshot matrix) and its glow lit the walls
+  // through the IBL. Fade the LUT out between -14 and -24 deg; the constant night-sky airglow terms in the shaders remain.
+  const t = Math.max(0, Math.min(1, (altDeg + 24) / 10));
+  const fade = t * t * (3 - 2 * t);
+  return { effAlt, gain: (target / phys) * fade };
 }

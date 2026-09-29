@@ -16,6 +16,19 @@ export class PerfMonitor {
     this.lastInfo = { drawCalls: 0, triangles: 0, geometries: 0, textures: 0, programs: 0 };
   }
 
+  /** smoothed main-thread ms of a named frame section (exponential average) */
+  mark(name, ms) {
+    const c = this.cpu || (this.cpu = {});
+    c[name] = c[name] === undefined ? ms : c[name] * 0.92 + ms * 0.08;
+  }
+
+  /** total of the marked sections: the JS / GL-submission cost of one frame on this device */
+  cpuTotal() {
+    let t = 0;
+    for (const k in this.cpu || {}) t += this.cpu[k];
+    return t;
+  }
+
   pushFrame(ms) {
     this.ft[this.i] = ms;
     this.i = (this.i + 1) % WINDOW;
@@ -55,7 +68,16 @@ export class PerfMonitor {
 
 /** Lowers/raises internal resolution to hold the frame-time target. */
 export class DynamicResolution {
-  constructor({ min, max, targetMs, enabled }) {
+  /**
+   * @param {{min:number, max:number, targetMs:number, enabled:boolean, slowFactor?:number, capMs?:number}} o
+   *   slowFactor: how far over the target the averaged frame time may go before the resolution is lowered.
+   *   capMs: the frame interval of an fps-capped device (30 fps phones = 33.3). A capped device always shows intervals of about capMs, even with time to
+   *   spare, so "fast enough to raise the resolution" cannot be read from the interval: it probes upward slowly instead (8 s of holding the cap
+   *   -> +5 %), and steps down as soon as it misses the cap (slowFactor should then be ~1.3).
+   */
+  constructor({ min, max, targetMs, enabled, slowFactor = 1.06, capMs = 0 }) {
+    this.slowFactor = slowFactor;
+    this.capMs = capMs;
     this.min = min;
     this.max = max;
     this.scale = max; // effective pixel ratio
@@ -86,7 +108,7 @@ export class DynamicResolution {
     this._acc = 0;
     this._frames = 0;
     let changed = null;
-    if (avg > this.targetMs * 1.15) {
+    if (avg > this.targetMs * this.slowFactor) { // 60 fps target: step down as soon as a second averages more than ~17.7 ms
       this._slow++;
       this._fast = 0;
       if (this._slow >= 2 && this.scale > this.min) {
@@ -94,11 +116,11 @@ export class DynamicResolution {
         changed = this.scale;
         this._slow = 0;
       }
-    } else if (avg < this.targetMs * 0.72) {
+    } else if (avg < (this.capMs ? this.capMs * 1.08 : this.targetMs * 0.72)) {
       this._fast++;
       this._slow = 0;
-      if (this._fast >= 4 && this.scale < this.max) {
-        this.scale = Math.min(this.max, +(this.scale * 1.08).toFixed(3));
+      if (this._fast >= (this.capMs ? 8 : 4) && this.scale < this.max) {
+        this.scale = Math.min(this.max, +(this.scale * (this.capMs ? 1.05 : 1.08)).toFixed(3));
         changed = this.scale;
         this._fast = 0;
       }
@@ -106,7 +128,7 @@ export class DynamicResolution {
       this._slow = 0;
       this._fast = 0;
     }
-    this.atFloorSeconds = this.scale <= this.min + 1e-3 && avg > this.targetMs * 1.15 ? this.atFloorSeconds + 1 : 0;
+    this.atFloorSeconds = this.scale <= this.min + 1e-3 && avg > this.targetMs * this.slowFactor ? this.atFloorSeconds + 1 : 0;
     return changed;
   }
 }

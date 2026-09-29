@@ -53,7 +53,14 @@ export class App {
       // headless/software-GL verification: keep it cheap but structurally representative
       this.settings.msaa = 0;
     }
-    if (this.q.has('msaa')) this.settings.msaa = +this.q.get('msaa');
+    this.settings.msaaMax = this.settings.msaa; // the tier's ceiling; the sample count actually used follows the pixel ratio (see _adaptMsaa)
+    if (this.q.has('msaa')) { this.settings.msaa = +this.q.get('msaa'); this.settings.msaaMax = 0; } // ?msaa= pins it (profiling)
+    // profiling switches (dev only, used by scripts/live-check.mjs to measure what each feature costs): ?off=shadow,bloom,clouds,refl,life,festival
+    this.off = new Set((this.q.get('off') || '').split(',').filter(Boolean));
+    if (this.off.has('shadow')) this.settings.shadowCascades = 0;
+    if (this.off.has('bloom')) this.settings.bloom = false;
+    if (this.off.has('clouds')) this.settings.cloudMode = 'flat';
+    if (this.off.has('refl')) { this.settings.reflections = 'env'; this.settings.reflectionScale = 0; }
     this.opts = opts;
     this.systems = [];
     this.frameHooks = [];
@@ -86,7 +93,7 @@ export class App {
     this.camera.position.set(0, 60, 250);
     this.camera.lookAt(0, 30, 0);
 
-    this.drs = new DynamicResolution({ min: s.minPixelRatio, max: Math.min(s.maxPixelRatio, window.devicePixelRatio || 1), targetMs: 1000 / this.tier.targetFps, enabled: s.dynamicResolution && !this.q.has('shot') });
+    this.drs = new DynamicResolution({ min: s.minPixelRatio, max: Math.min(s.maxPixelRatio, window.devicePixelRatio || 1), targetMs: 1000 / this.tier.targetFps, slowFactor: s.fpsCap ? 1.3 : 1.06, capMs: s.fpsCap ? 1000 / s.fpsCap : 0, enabled: s.dynamicResolution && !this.q.has('shot') });
     if (this.q.has('pr')) { this.drs.enabled = false; this.drs.scale = +this.q.get('pr'); }
     this.pixelRatio = this.drs.scale;
 
@@ -115,14 +122,14 @@ export class App {
     }
 
     // street life (traffic, people, cows, pigeons): worker simulation on the baked OSM street graph; skipped in the synthetic lab
-    if (!this.labMode) {
+    if (!this.labMode && !this.off.has('life')) {
       progress('street life');
       this.life = new Life({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, base: import.meta.env.BASE_URL });
       await this.life.init(this);
     }
 
     // night / festival: street lamps, festival strings, lit landmarks, fireworks, kites (needs the baked OSM graph + footprints; skipped in the lab)
-    if (!this.labMode) {
+    if (!this.labMode && !this.off.has('festival')) {
       progress('festival');
       this.festival = new Festival({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, landmarkItems: this.landmarkPlan ? this.landmarkPlan.items : [], base: import.meta.env.BASE_URL });
     }
@@ -149,7 +156,7 @@ export class App {
       update: (dt) => this.update(dt),
       render: (dt, alpha) => this.frame(dt, alpha),
     });
-    this.loop.fpsCap = s.fpsCap;
+    this.loop.fpsCap = this.q.has('fps') ? +this.q.get('fps') : s.fpsCap; // ?fps=0 lifts the phone cap (profiling)
     this.loop.onFrameTime = (raw) => {
       this.perf.pushFrame(raw);
       const sc = this.drs.push(raw);
@@ -264,11 +271,26 @@ export class App {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h, false);
     const bw = Math.round(w * this.pixelRatio), bh = Math.round(h * this.pixelRatio);
+    this._adaptMsaa();
     this.post.setSize(bw, bh);
     this.reflection?.setSize(bw, bh);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.lighting?.updateFrustums();
+  }
+
+  /**
+   * MSAA follows the effective pixel ratio: at native Retina the pixels are already dense, and measured on an M4 Pro at 1.76x the cost of 4x MSAA is
+   * 3-6 ms over no MSAA (2x: 1.5-3 ms), so 4x is used only up to ~1.35x, 2x up to ~1.9x and FXAA-only above. Hysteresis stops dynamic resolution from
+   * flipping the sample count (every change re-allocates the HDR target).
+   */
+  _adaptMsaa() {
+    const max = this.settings.msaaMax, cur = this.post.msaa, pr = this.pixelRatio;
+    if (!max) return;
+    let want = 0;
+    if (max >= 4 && pr <= (cur === 4 ? 1.45 : 1.35)) want = 4;
+    else if (pr <= (cur >= 2 ? 2.0 : 1.9)) want = Math.min(2, max);
+    if (want !== cur) this.post.setMsaa(want);
   }
 
   /** GPU-independent resource numbers for the budget gate (draw calls, triangles and geometries come from the last rendered frame). */
@@ -311,26 +333,37 @@ export class App {
 
   frame(dt, alpha) {
     const cam = this.camera;
+    // per-section main-thread (CPU) time, smoothed, shown in the perf overlay: where a slow phone would spend its frame
+    let _t = performance.now();
+    const lap = (name) => { const t = performance.now(); this.perf.mark(name, t - _t); _t = t; };
     this.tour?.update(dt);
     this.rig?.update(dt);
     for (const h of this.frameHooks) h(dt, this);
     for (const s of this.systems) s.frame?.(dt, alpha, this);
+    lap('camera');
 
     computeEnv(this.env, this.clock.ms, this.weather.s);
     const flash = this.weather.flash;
     this.sky.update(this.env, this.weather.s, dt, { windOffset: this.weather.windOffset, time: this.clock.elapsed, flash, camera: cam });
     ENV.uFog.value.x *= this.debug.fogScale;
     this.updateWetUniforms();
+    lap('sky+env');
     this.fx.frame(dt, this);
+    lap('weather fx');
     this.life?.frame(dt, this);
+    lap('street life');
     this.festival?.frame(dt, alpha, this);
+    lap('festival');
     this.audio?.frame(dt, this);
+    lap('audio');
     this.lighting.update(this.env, dt);
     this.terrain.update(cam);
     this.updateVeg();
+    lap('light+terrain');
     this.city.update(cam, dt);
     this.city.setNight(this.env.night);
     BUILDING_UNIFORMS.uShopOpen.value = shopOpenFraction(this.clock.hours);
+    lap('city stream');
 
     // dynamic near plane keeps depth precision when close to the ground
     const h = Math.max(0.5, cam.position.y - this.hf.heightAt(cam.position.x, cam.position.z));
@@ -357,9 +390,11 @@ export class App {
       }
       if (done) { rex.x = Math.min(1, wet * 1.15); rex.y = 1.0 - Math.min(1, Math.max(0, (hAbove - 0.6 * maxH) / (0.4 * maxH))); } else rex.x = 0;
     }
+    lap('reflection');
     r.setRenderTarget(this.post.target);
     r.clear();
     r.render(this.scene, cam);
+    lap('scene submit');
     this.perf.captureInfo(r);
     const e = this.env;
     this.post.finish({
@@ -371,9 +406,11 @@ export class App {
       dust: Math.min(1, this.weather.s.dust * (0.1 + 0.9 * this.weather.s.storm)) * 0.9,
       grade: [1.0 + 0.04 * (1 - e.night), 1, Math.max(0, 1 - Math.abs(e.sunAlt - 4) / 25)],
     });
+    lap('post submit');
     r.info.reset();
     this.overlay.update(performance.now());
     this.ui?.frame(dt);
+    lap('ui');
   }
 
   updateWetUniforms() {
