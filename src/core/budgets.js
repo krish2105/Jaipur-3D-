@@ -39,6 +39,7 @@ export const TIERS = {
       fpsCap: 0,
       skyCubeSize: 128,
       starCount: 2600,
+      starCut: 0.9, // city-sky magnitude limit scale (1 = a bright city; lower = more stars)
     },
     budget: { drawCalls: 700, triangles: 5_500_000, textureMB: 320, geometries: 400, instances: 30_000 },
   },
@@ -73,6 +74,7 @@ export const TIERS = {
       fpsCap: 0,
       skyCubeSize: 64,
       starCount: 1800,
+      starCut: 1,
     },
     budget: { drawCalls: 480, triangles: 2_800_000, textureMB: 192, geometries: 300, instances: 15_000 },
   },
@@ -107,6 +109,7 @@ export const TIERS = {
       fpsCap: 30,
       skyCubeSize: 32,
       starCount: 900,
+      starCut: 1.03,
     },
     budget: { drawCalls: 260, triangles: 1_000_000, textureMB: 96, geometries: 220, instances: 6_000 },
   },

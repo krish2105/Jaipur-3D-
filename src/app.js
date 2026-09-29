@@ -16,6 +16,8 @@ import { Terrain } from './world/terrain.js';
 import { fromIST } from './astro/astro.js';
 import { City, NetworkSource, MemorySource } from './world/city.js';
 import { BUILDING_UNIFORMS } from './world/facadeMaterial.js';
+import { planLandmarks, Landmarks } from './world/landmarks/index.js';
+import { estimateTextureMB, countInstances } from './core/gpumem.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -135,8 +137,17 @@ export class App {
     } else {
       source = new NetworkSource(`${import.meta.env.BASE_URL}data/osm/`);
     }
-    this.city = new City({ scene: this.scene, lighting: this.lighting, settings: this.settings, source, hf: this.hf });
+    // lab district is synthetic and not Jaipur: no landmarks there
+    this.city = new City({
+      scene: this.scene, lighting: this.lighting, settings: this.settings, source, hf: this.hf,
+      onManifest: this.labMode ? null : (man) => { this.landmarkPlan = planLandmarks(man); return this.landmarkPlan.exclude; },
+    });
     const ok = await this.city.init();
+    await this.loadCover(this.city.manifest);
+    if (!this.labMode) {
+      if (!this.landmarkPlan) this.landmarkPlan = planLandmarks(null); // no OSM data baked: sourced fallback coordinates only
+      this.landmarks = new Landmarks({ scene: this.scene, lighting: this.lighting, hf: this.hf, plan: this.landmarkPlan });
+    }
     const notice = document.getElementById('notice');
     if (!ok && notice) {
       notice.textContent = 'OpenStreetMap city data (buildings, streets) is not baked into this build yet, because the build sandbox could not reach the Overpass API. Terrain, sky, weather and landmarks are shown. See PROGRESS.md.';
@@ -144,6 +155,26 @@ export class App {
     } else if (this.labMode && notice) {
       notice.textContent = 'RENDERER LAB: synthetic test geometry, not Jaipur.';
       notice.hidden = false;
+    }
+  }
+
+  /** OSM land cover raster (water, vegetation, parks, built-up land) for the terrain shader; absent data just leaves the terrain as is */
+  async loadCover(manifest) {
+    const c = manifest && manifest.cover;
+    if (!c || this.labMode) return;
+    try {
+      const r = await fetch(`${import.meta.env.BASE_URL}data/osm/${c.file}`);
+      if (!r.ok || (r.headers.get('content-type') || '').includes('html')) return;
+      // a host may or may not add its own Content-Encoding on top: accept raw RGBA as well as our gzip payload (detected by its magic bytes)
+      let bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.length !== c.w * c.h * 4 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+        if (typeof DecompressionStream === 'undefined') { console.warn('land cover needs DecompressionStream; skipped'); return; }
+        bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+      }
+      if (bytes.length !== c.w * c.h * 4) { console.warn('land cover size mismatch, ignored'); return; }
+      this.terrain.setCover(bytes, c);
+    } catch (e) {
+      console.warn('land cover unavailable', e);
     }
   }
 
@@ -181,6 +212,14 @@ export class App {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.lighting?.updateFrustums();
+  }
+
+  /** GPU-independent resource numbers for the budget gate (draw calls, triangles and geometries come from the last rendered frame). */
+  resourceReport() {
+    const info = this.perf.lastInfo;
+    const tex = estimateTextureMB({ post: this.post, sky: this.sky, lighting: this.lighting, terrain: this.terrain, hf: this.hf, ENV }, this.scene);
+    const inst = countInstances(this.scene);
+    return { tier: this.tierName, drawCalls: info.drawCalls, triangles: info.triangles, geometries: info.geometries, textureMB: +tex.mb.toFixed(1), textureTop: tex.rows.slice(0, 8).map((r) => `${r.label} ${r.mb.toFixed(1)}MB`), instances: inst.total, instancesBy: inst.by };
   }
 
   reportContext() {

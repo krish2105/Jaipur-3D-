@@ -31,6 +31,8 @@ uniform sampler2D uLake;
 uniform vec4 uTerr;
 uniform vec4 uTerr2;
 uniform vec4 uVeg;       // x greenness, y urban-dust factor, z wet, w unused
+uniform sampler2D uCover; // OSM land cover: R built-up, G vegetation, B water, A parks (0 where unmapped)
+uniform vec4 uCoverP;     // x x0, y z0 (m), z 1/width, w 1/height (m^-1); zw = 0 disables
 varying vec3 vTWP;
 varying float vTSkirt;
 float terrainHf(vec2 xz){
@@ -47,6 +49,12 @@ vec3 terrainNormal(vec2 xz, float step){
   return normalize(vec3(hL - hR, 2.0 * step, hD - hU));
 }
 `;
+
+function emptyCover() {
+  const t = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
+}
 
 export class Terrain {
   /**
@@ -66,6 +74,8 @@ export class Terrain {
       uTerr: { value: new THREE.Vector4(hf.nearHalf, hf.farHalf, 0, 0) },
       uTerr2: { value: new THREE.Vector4(hf.lakeLevel, 60, 0, 0) },
       uVeg: { value: new THREE.Vector4(0.25, 0.5, 0, 0) },
+      uCover: { value: emptyCover() },
+      uCoverP: { value: new THREE.Vector4(0, 0, 0, 0) },
     };
     this.rings = [];
     const N = settings.terrainGrid;
@@ -90,6 +100,20 @@ export class Terrain {
       this.rings.push(mesh);
     }
     this.spacing0 = s0;
+  }
+
+  /** install the OSM land-cover raster (Uint8Array RGBA, meta from manifest.cover) */
+  setCover(bytes, meta) {
+    const t = new THREE.DataTexture(bytes, meta.w, meta.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.generateMipmaps = true;
+    t.needsUpdate = true;
+    t.name = 'landcover';
+    this.uniforms.uCover.value?.dispose?.();
+    this.uniforms.uCover.value = t;
+    this.uniforms.uCoverP.value.set(meta.x0, meta.z0, 1 / (meta.w * meta.texel), 1 / (meta.h * meta.texel));
   }
 
   _ringGeometry(N, s, hole) {
@@ -244,6 +268,11 @@ vec4 terrainAlbedo(vec3 wp){
   col = mix(col, rock, rockMask);
   col *= 0.86 + 0.28 * mix(0.5, hi, fadeHi);
   col *= 0.9 + 0.2 * mid;
+  // OpenStreetMap land cover, only where mapped (uCoverP.zw == 0 -> no data -> all zero)
+  vec4 cv = texture2D(uCover, (xz - uCoverP.xy) * uCoverP.zw);
+  col = mix(col, vec3(0.30, 0.245, 0.19) * (0.84 + 0.32 * hi), cv.r * 0.8);                                     // built-up land: pale roofs and dust
+  col = mix(col, mix(vec3(0.085, 0.082, 0.040), vec3(0.058, 0.098, 0.034), uVeg.x) * (0.72 + 0.56 * mid), cv.g * 0.88 * (1.0 - rockMask * 0.4));   // forest / scrub
+  col = mix(col, mix(vec3(0.10, 0.115, 0.045), vec3(0.05, 0.115, 0.03), uVeg.x) * (0.8 + 0.4 * hi), cv.a);      // parks and lawns
   // wet ground darkens
   col *= 1.0 - 0.32 * uWet.x;
   // water body (Man Sagar): baked mask sampled on the near grid
@@ -252,6 +281,7 @@ vec4 terrainAlbedo(vec3 wp){
     float lk = texture2D(uLake, xz / (2.0 * uTerr.x) + 0.5).r;
     water = smoothstep(0.45, 0.6, lk) * step(abs(h - uTerr2.x), 3.0);
   }
+  water = max(water, smoothstep(0.4, 0.65, cv.b)); // OSM water polygons (Man Sagar, Maota, Hanuman Sagar, ponds ...)
   if (water > 0.5){
     col = mix(vec3(0.020, 0.040, 0.045), vec3(0.035, 0.065, 0.06), fbm2_3(xz * 0.01) );
   }

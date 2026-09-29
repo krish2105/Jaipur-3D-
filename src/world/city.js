@@ -50,6 +50,7 @@ export class City {
     this.source = o.source;
     this.hf = o.hf || null;
     this.flatGround = o.flatGround ?? null;
+    this.onManifest = o.onManifest || null; // (manifest) => exclusion list for the tile worker
     this.group = new THREE.Group();
     this.group.name = 'city';
     this.tiles = new Map();
@@ -89,15 +90,17 @@ export class City {
 
   async init() {
     const w = this.worker;
-    if (this.hf && this.hf.sampler) {
-      const s = this.hf.sampler;
-      w.postMessage({ type: 'init', near: s.near, nearN: s.nearN, nearHalf: s.nearHalf, far: s.far, farN: s.farN, farHalf: s.farHalf });
-    } else {
-      w.postMessage({ type: 'init', flat: this.flatGround ?? 0 });
-    }
-    await this._ready;
+    // the manifest comes first: the landmark plan derived from it says which OSM footprints the worker must drop
     this.manifest = await this.source.manifest();
     this.available = !!this.manifest && Object.keys(this.manifest.tiles || {}).length > 0;
+    const exclude = this.onManifest ? this.onManifest(this.manifest) : null;
+    if (this.hf && this.hf.sampler) {
+      const s = this.hf.sampler;
+      w.postMessage({ type: 'init', near: s.near, nearN: s.nearN, nearHalf: s.nearHalf, far: s.far, farN: s.farN, farHalf: s.farHalf, exclude });
+    } else {
+      w.postMessage({ type: 'init', flat: this.flatGround ?? 0, exclude });
+    }
+    await this._ready;
     return this.available;
   }
 

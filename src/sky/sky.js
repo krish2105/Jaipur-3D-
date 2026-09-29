@@ -125,6 +125,8 @@ uniform vec4 uMoonP;       // x illum, y parallactic q, z angular radius, w eart
 uniform vec3 uMoonRad2;
 uniform mat3 uStarRot;
 uniform float uStarGain;
+uniform float uStarCut;
+uniform float uCloudFade; // fair-weather clouds are all but invisible in a dark sky
 uniform float uPixAngle;
 uniform vec3 uGroundLight;
 uniform float uFlash;
@@ -137,7 +139,8 @@ vec4 cloudMarch(vec3 ro, vec3 rd){
   if (tB <= 0.0) return vec4(0.0, 0.0, 0.0, 1.0);
   tA = max(tA, 0.0);
   float dt = (tB - tA) / float(CLOUD_STEPS);
-  float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  // white-noise jitter that changes every frame: reads as fine grain (and averages out in motion) instead of the structured hatch of gradient noise
+  float jit = hash12(gl_FragCoord.xy + fract(uTime * 0.6180339) * 173.0);
   const float SIGMA = 0.014;
   float T = 1.0; vec3 L = vec3(0.0);
   float mu = dot(rd, uSunDir);
@@ -166,17 +169,21 @@ vec4 cloudMarch(vec3 ro, vec3 rd){
       if (T < 0.015) break;
     }
   }
+  L *= 1.0 - uCloudFade;
+  T = mix(T, 1.0, uCloudFade);
   return vec4(L, T);
 }
 
-vec3 starLayer(vec3 e, float cells, float prob, float size, float gain){
+vec3 starLayer(vec3 e, float cells, float prob, float size, float gain, float cut){
   vec3 p = e * cells;
   vec3 ip = floor(p);
   vec3 h = hash33(ip);
   if (h.x > prob) return vec3(0.0);
   vec3 sp = (ip + 0.2 + 0.6 * hash33(ip + 7.3)) / cells;
   float ang = length(e - normalize(sp));
-  float b = pow(hash13(ip + 3.1), 5.0) * gain;
+  // magnitude limit of a bright city sky: only the brightest stars of each layer survive (uStarCut), the rest is washed out
+  // cut is the fraction of the brightness range removed: 0.42 keeps ~15 % of the coarse layer, 0.9+ keeps only the top ~2 % of the fine ones
+  float b = gain * max(0.0, pow(hash13(ip + 3.1), 5.0) - cut * uStarCut);
   float tw = 1.0 + 0.22 * sin(uTime * (2.0 + 6.0 * h.y) + h.z * 40.0);
   vec3 tint = mix(vec3(1.0, 0.82, 0.62), vec3(0.72, 0.82, 1.0), h.y);
   return tint * b * tw * exp(-pow(ang / size, 2.0));
@@ -185,9 +192,9 @@ vec3 starLayer(vec3 e, float cells, float prob, float size, float gain){
 vec3 stars(vec3 dir){
   vec3 e = normalize(uStarRot * dir);
   float sz = uPixAngle * 0.8;
-  vec3 c = starLayer(e, 45.0, 0.07, sz * 1.3, 9.0);
-  c += starLayer(e, 95.0, 0.10, sz, 5.0);
-  c += starLayer(e, 190.0, 0.12, sz * 0.9, 2.6);
+  vec3 c = starLayer(e, 45.0, 0.07, sz * 1.3, 9.0, 0.42);
+  c += starLayer(e, 95.0, 0.10, sz, 5.0, 0.90);
+  c += starLayer(e, 190.0, 0.12, sz * 0.9, 2.6, 0.97);
   // Milky Way band: galactic pole (RA 192.86, Dec +27.13) in equatorial coordinates
   vec3 pole = vec3(cos(0.4735) * cos(3.3660), cos(0.4735) * sin(3.3660), sin(0.4735));
   float b = asin(clamp(dot(e, pole), -1.0, 1.0));
@@ -360,7 +367,7 @@ export class SkySystem {
 
   _skyMaterial(env) {
     const cloudMode = this.settings.cloudMode || 'layered';
-    const steps = env ? 4 : { volumetric: 14, layered: 8, flat: 4 }[cloudMode];
+    const steps = env ? 4 : { volumetric: 20, layered: 12, flat: 6 }[cloudMode];
     const lightSteps = env ? 1 : { volumetric: 3, layered: 2, flat: 1 }[cloudMode];
     const detail = !env && cloudMode !== 'flat';
     const m = new THREE.ShaderMaterial({
@@ -380,6 +387,8 @@ export class SkySystem {
         uMoonRad2: { value: new THREE.Vector3(3, 3, 3) },
         uStarRot: { value: new THREE.Matrix3() },
         uStarGain: { value: 0 },
+        uStarCut: { value: 1 },
+        uCloudFade: { value: 0 },
         uPixAngle: { value: 0.001 },
         uGroundLight: { value: new THREE.Vector3(0.1, 0.09, 0.08) },
         uFlash: { value: 0 },
@@ -478,6 +487,8 @@ export class SkySystem {
     const mr = 3.4 * (1 - 0.8 * env.skyAux.overcast);
     su.uMoonRad2.value.set(0.8 * mr, 0.9 * mr, 1.0 * mr);
     su.uStarGain.value = env.starGain;
+    su.uStarCut.value = this.settings.starCut ?? 1;
+    su.uCloudFade.value = 0.85 * env.night * (1 - env.skyAux.overcast) * (1 - 0.6 * env.cloud.storm);
     // horizon (world: x east, y up, -z north) -> equatorial rotation for the star field
     su.uStarRot.value.copy(this._starMatrix(env.lstRad));
 

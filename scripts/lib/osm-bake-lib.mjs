@@ -8,6 +8,7 @@
 //  * Building outer rings are counter-clockwise seen from above (east right, north up).
 import { project } from '../../src/core/geo.js';
 import { hash01 } from '../../src/core/rng.js';
+import { orientedBox } from '../../src/world/landmarks/plan.js';
 
 export const TILE = 500;
 const DM = 10;
@@ -368,6 +369,7 @@ export function chunkBuildings(bldgs, { simplifyTol = 0.15, minArea = 6 } = {}) 
     if (b.name) rec.n = b.name;
     if (b.colour) rec.c = b.colour;
     if (b.part) rec.pt = 1;
+    if (b.wall) rec.wl = 1;
     if (b.tags.wikidata) rec.w = b.tags.wikidata;
     t.b.push(rec);
   }
@@ -546,7 +548,8 @@ export function buildGraph(ways, signalKeys = new Set()) {
 // ---------------------------------------------------------------------------------------------
 // misc features
 
-const WALL_HEIGHT = { city_wall: 6.5, wall: 2.6, retaining_wall: 2.5, fence: 1.5 };
+// city_wall: ~6 m high, ~3 m thick (docs/LANDMARK_FACTS.md)
+const WALL_HEIGHT = { city_wall: 6, wall: 2.6, retaining_wall: 2.5, fence: 1.5 };
 
 export function extractMisc(elements) {
   const misc = { trees: [], lamps: [], signals: [], walls: [], water: [], green: [], places: [], shops: [], gates: [], landuse: [] };
@@ -558,7 +561,7 @@ export function extractMisc(elements) {
       if (t.natural === 'tree') misc.trees.push([p.x, p.z]);
       else if (t.highway === 'street_lamp') misc.lamps.push([p.x, p.z]);
       else if (t.highway === 'traffic_signals') misc.signals.push({ id: el.id, x: p.x, z: p.z });
-      else if (t.historic === 'city_gate' || t.historic === 'gate') misc.gates.push({ x: p.x, z: p.z, n: t.name || null });
+      else if (t.historic === 'city_gate' || t.historic === 'gate' || (t.barrier === 'gate' && /gate|pol\b|pole|darwaza/i.test(t.name || ''))) misc.gates.push({ id: `n${el.id}`, x: p.x, z: p.z, n: t.name || null, alt: t['name:alt'] || t.alt_name || undefined });
       if (t.shop || t.amenity === 'marketplace') misc.shops.push({ x: p.x, z: p.z, k: t.shop || 'market', n: t.name || null });
       if (t.amenity === 'place_of_worship') misc.places.push({ x: p.x, z: p.z, k: t.religion || 'worship', n: t.name || null });
       continue;
@@ -566,9 +569,19 @@ export function extractMisc(elements) {
     if (el.type === 'way' && el.geometry) {
       const pts = projectGeom(el.geometry);
       if (pts.length < 2) continue;
+      // Real Jaipur data maps gates as building outlines tagged historic=city_gate; they are baked as buildings AND listed here
+      // (name, centre, ring) so the app can dress them and use them as landmarks.
+      if (t.historic === 'city_gate') {
+        const gr = cleanRing(pts, 3);
+        const c = gr ? centroid(gr) : pts[0];
+        misc.gates.push({ id: `w${el.id}`, x: c[0], z: c[1], n: t.name || null, alt: t['name:alt'] || t.alt_name || undefined, ring: gr || undefined });
+      }
       const wallKind = t.barrier && WALL_HEIGHT[t.barrier] ? t.barrier : /^(citywalls|city_wall)$/.test(t.historic || '') ? 'city_wall' : null;
       if (wallKind) {
-        misc.walls.push({ k: wallKind, h: parseLength(t.height) || WALL_HEIGHT[wallKind], pts: dedupePoints(pts, 0.2), n: t.name || null });
+        // barrier=city_wall + area=yes (or any closed ring) is a footprint polygon, not a centre line
+        const ring = t.area === 'yes' ? cleanRing(pts, 3) : null;
+        if (ring) misc.walls.push({ k: wallKind, h: parseLength(t.height) || WALL_HEIGHT[wallKind], pts: signedArea(ring) < 0 ? ring.slice().reverse() : ring, n: t.name || null, closed: true });
+        else misc.walls.push({ k: wallKind, h: parseLength(t.height) || WALL_HEIGHT[wallKind], pts: dedupePoints(pts, 0.2), n: t.name || null });
         continue;
       }
       if (t.natural === 'water' || t.landuse === 'reservoir' || t.landuse === 'basin' || t.water) {
@@ -594,6 +607,96 @@ export function extractMisc(elements) {
   return misc;
 }
 
+/** Offset an open polyline by +-half (miter joins, capped) and return a closed ring (metres). Used to give line walls thickness. */
+export function bufferPolyline(pts, half) {
+  const p = dedupePoints(pts, 0.05);
+  const n = p.length;
+  if (n < 2) return null;
+  const dirs = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = p[i + 1][0] - p[i][0], dz = p[i + 1][1] - p[i][1], l = Math.hypot(dx, dz) || 1;
+    dirs.push([dx / l, dz / l]);
+  }
+  const left = [], right = [];
+  for (let i = 0; i < n; i++) {
+    const a = dirs[Math.max(0, i - 1)], b = dirs[Math.min(dirs.length - 1, i)];
+    // left normal of a direction (dx, dz) is (dz, -dx); the miter vector is (na + nb) / (1 + na.nb), capped
+    const nax = a[1], naz = -a[0], nbx = b[1], nbz = -b[0];
+    const inv = 1 / Math.max(1 + nax * nbx + naz * nbz, 0.25);
+    let mx = (nax + nbx) * inv, mz = (naz + nbz) * inv;
+    const ml = Math.hypot(mx, mz);
+    if (ml > 2.5) { mx *= 2.5 / ml; mz *= 2.5 / ml; }
+    left.push([p[i][0] + mx * half, p[i][1] + mz * half]);
+    right.push([p[i][0] - mx * half, p[i][1] - mz * half]);
+  }
+  return left.concat(right.reverse());
+}
+
+/** Miter offset of a closed ring along each edge's left normal (dz, -dx) by d metres (negative d = the other side); miter capped. */
+export function offsetRing(r, d) {
+  const n = r.length;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const p0 = r[(i + n - 1) % n], p1 = r[i], p2 = r[(i + 1) % n];
+    let ax = p1[0] - p0[0], az = p1[1] - p0[1], bx = p2[0] - p1[0], bz = p2[1] - p1[1];
+    const la = Math.hypot(ax, az) || 1, lb = Math.hypot(bx, bz) || 1;
+    ax /= la; az /= la; bx /= lb; bz /= lb;
+    const nax = az, naz = -ax, nbx = bz, nbz = -bx;
+    const inv = 1 / Math.max(1 + nax * nbx + naz * nbz, 0.25);
+    let mx = (nax + nbx) * inv, mz = (naz + nbz) * inv;
+    const ml = Math.hypot(mx, mz);
+    if (ml > 2.5) { mx *= 2.5 / ml; mz *= 2.5 / ml; }
+    out[i] = [p1[0] + mx * d, p1[1] + mz * d];
+  }
+  return out;
+}
+
+function perimeter(r) {
+  let p = 0;
+  for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; p += Math.hypot(b[0] - a[0], b[1] - a[1]); }
+  return p;
+}
+
+/**
+ * City walls as building-like solids of the wall's height:
+ *  - a THIN closed area footprint (2A/P <= 6 m) keeps its own outline,
+ *  - a fat closed area (a wall drawn as the region it encloses) or a closed loop line becomes a ring wall (outer edge + hole) `thickness` thick,
+ *  - an open line is buffered to `thickness`.
+ */
+export function wallSolids(walls, { thickness = 3 } = {}) {
+  const out = [];
+  let i = 0;
+  const push = (outer, holes, h) => {
+    const c = centroid(outer);
+    out.push({ id: `k${i++}`, tags: {}, outer, holes, part: false, cls: 'her', area: Math.abs(signedArea(outer)), cx: c[0], cz: c[1], h, src: 0, minH: 0, levels: 0, roof: 'f', colour: null, name: null, wall: true });
+  };
+  const ringWall = (ring, h) => {
+    const a = offsetRing(ring, thickness / 2), b = offsetRing(ring, -thickness / 2);
+    let outer = Math.abs(signedArea(a)) >= Math.abs(signedArea(b)) ? a : b;
+    let hole = outer === a ? b : a;
+    if (signedArea(outer) < 0) outer = outer.slice().reverse();
+    if (signedArea(hole) > 0) hole = hole.slice().reverse();
+    push(outer, [hole], h);
+  };
+  for (const w of walls) {
+    if (w.k !== 'city_wall') continue;
+    const pts = w.pts;
+    if (w.closed) {
+      const a = Math.abs(signedArea(pts)), thick = (2 * a) / (perimeter(pts) || 1);
+      if (thick <= 6) { push(signedArea(pts) < 0 ? pts.slice().reverse() : pts, [], w.h); continue; }
+      ringWall(pts, w.h);
+      continue;
+    }
+    const loop = pts.length >= 4 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.3;
+    if (loop) { ringWall(pts.slice(0, -1), w.h); continue; }
+    let ring = bufferPolyline(pts, thickness / 2);
+    if (!ring || ring.length < 3) continue;
+    if (signedArea(ring) < 0) ring = ring.slice().reverse();
+    push(ring, [], w.h);
+  }
+  return out;
+}
+
 export function chunkMisc(misc) {
   const tiles = new Map();
   const get = (x, z) => {
@@ -606,6 +709,13 @@ export function chunkMisc(misc) {
   for (const [x, z] of misc.trees) { const [t, ox, oz] = get(x, z); t.trees.push(q(x, ox), q(z, oz)); }
   for (const [x, z] of misc.lamps) { const [t, ox, oz] = get(x, z); t.lamps.push(q(x, ox), q(z, oz)); }
   for (const w of misc.walls) {
+    if (w.k === 'city_wall') continue; // extruded as solids by wallSolids() and baked with the buildings
+    if (w.closed) {
+      const c = centroid(w.pts);
+      const [t, ox, oz] = get(c[0], c[1]);
+      t.walls.push({ k: w.k, h: w.h, c: 1, p: encRing(w.pts, ox, oz) });
+      continue;
+    }
     for (const [k, runs] of clipPolylineToTiles(w.pts)) {
       const [ix, iz] = k.split('_').map(Number);
       const [t, ox, oz] = get(ix * TILE + 1, iz * TILE + 1);
@@ -625,6 +735,10 @@ export function chunkMisc(misc) {
 export const LANDMARK_PATTERNS = {
   hawaMahal: /hawa\s*mahal/i,
   cityPalace: /city\s*palace/i,
+  chandraMahal: /chandra\s*mahal/i,
+  mubarakMahal: /mubarak\s*mahal/i,
+  tripolia: /tripolia/i,
+  isarLat: /isar\s*lat|sargasuli|sargasooli/i,
   jantarMantar: /jantar\s*mantar/i,
   jalMahal: /jal\s*mahal/i,
   badiChaupar: /badi\s*chaupar/i,
@@ -634,32 +748,61 @@ export const LANDMARK_PATTERNS = {
   surajpole: /suraj\s*pole|surajpol/i,
   ajmeriGate: /ajmeri\s*gate/i,
   sanganeriGate: /sanganeri\s*gate/i,
+  newGate: /new\s*gate|man\s*gate|naya\s*pol/i,
+  ghatGate: /ghat\s*(gate|darwaza)/i,
+  zorawarGate: /zorawar|jorawar|samrat\s*gate/i,
   amerFort: /(amer|amber)\s*(fort|palace)/i,
-  jaigarh: /jaigarh/i,
+  jaigarh: /jaigarh|jaighar|jaigad|jai\s+garh/i, // OSM spells the fort node "Jaighar Fort"
   nahargarh: /nahargarh/i,
   albertHall: /albert\s*hall/i,
   govindDevJi: /govind\s*dev/i,
   jamaMasjid: /jama\s*masjid/i,
 };
 
-/** Find OSM features whose name matches a landmark; returns { key: [{id,type,name,tags,x,z,ring?}] }. */
+// Features that share a landmark's name but are not the landmark: bus routes and stops, shops, food, lodging, services.
+const JUNK_AMENITY = /^(ice_cream|restaurant|cafe|fast_food|bar|pub|food_court|bank|atm|pharmacy|clinic|hospital|dentist|doctors|school|college|kindergarten|parking|fuel|taxi|bus_station|blood_bank|cinema|nightclub|car_rental)$/;
+const JUNK_TOURISM = /^(hotel|hostel|guest_house|apartment|motel|chalet)$/;
+
+/** null = not a candidate; otherwise a rank (higher = more likely the monument itself). */
+export function landmarkScore(t, area = 0) {
+  if (t.route || t.type === 'route' || t.type === 'route_master' || t.type === 'public_transport') return null;
+  if (t.public_transport || t.highway === 'bus_stop' || t.railway) return null;
+  if (t.shop || t.office || t.craft) return null;
+  if (JUNK_AMENITY.test(t.amenity || '') || JUNK_TOURISM.test(t.tourism || '')) return null;
+  let s = 5;
+  if (t.historic === 'city_gate') s = 62;
+  else if (t.historic) s = 50;
+  else if (t.tourism === 'attraction' || t.tourism === 'museum') s = 46;
+  else if (t.amenity === 'place_of_worship') s = 40;
+  else if (t.building) s = 30;
+  else if (t.place) s = 26;
+  else if (t.man_made) s = 20;
+  else if (t.leisure || t.landuse) s = 15;
+  else if (t.highway) s = 12;
+  return s + Math.min(15, Math.sqrt(area) / 8);
+}
+
+/**
+ * Find OSM features whose name matches a landmark; returns { key: [{id,type,name,kind,x,z,score,ring?}] } with the best
+ * candidate first (at most 8 per key).
+ */
 export function resolveLandmarks(elements) {
   const found = {};
   for (const el of elements) {
     const t = el.tags;
     if (!t) continue;
-    const names = [t.name, t['name:en'], t.alt_name, t.old_name].filter(Boolean).join(' | ');
+    const names = [t.name, t['name:en'], t.alt_name, t.old_name, t['name:alt']].filter(Boolean).join(' | ');
     if (!names) continue;
     for (const [key, re] of Object.entries(LANDMARK_PATTERNS)) {
       if (!re.test(names)) continue;
-      let x, z, ring = null;
+      let x, z, ring = null, area = 0;
       if (el.type === 'node' && el.lat !== undefined) { const p = project(el.lat, el.lon); x = p.x; z = p.z; }
       else if (el.type === 'way' && el.geometry) {
         const pts = projectGeom(el.geometry);
         if (pts.length < 2) continue;
         const c = pts.length > 3 ? centroid(pts.slice(0, -1)) : pts[0];
         x = c[0]; z = c[1];
-        if (pts.length >= 4) ring = pts;
+        if (pts.length >= 4) { ring = pts; area = Math.abs(signedArea(pts.slice(0, -1))); }
       } else if (el.type === 'relation' && el.members) {
         const all = [];
         for (const m of el.members) if (m.geometry) all.push(...projectGeom(m.geometry));
@@ -667,8 +810,100 @@ export function resolveLandmarks(elements) {
         x = all.reduce((s, p) => s + p[0], 0) / all.length;
         z = all.reduce((s, p) => s + p[1], 0) / all.length;
       } else continue;
-      (found[key] ||= []).push({ id: `${el.type[0]}${el.id}`, type: el.type, name: t.name || t['name:en'], x: +x.toFixed(1), z: +z.toFixed(1), kind: t.tourism || t.historic || t.amenity || t.building || t.highway || t.place || null, ring: ring ? ring.map((p) => [+p[0].toFixed(1), +p[1].toFixed(1)]) : undefined });
+      const score = landmarkScore(t, area);
+      if (score === null) continue;
+      (found[key] ||= []).push({ id: `${el.type[0]}${el.id}`, type: el.type, name: t.name || t['name:en'], x: +x.toFixed(1), z: +z.toFixed(1), kind: t.historic || t.tourism || t.amenity || t.building || t.highway || t.place || null, score: +score.toFixed(1), ring: ring ? ring.map((p) => [+p[0].toFixed(1), +p[1].toFixed(1)]) : undefined });
     }
   }
+  for (const k of Object.keys(found)) found[k] = found[k].sort((a, b) => b.score - a.score).slice(0, 8);
   return found;
+}
+
+// ---------------------------------------------------------------------------------------------
+// sites: hero compounds whose real layout is mapped in OSM (currently Jantar Mantar)
+
+const INSTRUMENT_CLASSES = [
+  ['laghu', /laghu/i], ['samrat', /samrat/i], ['rashi', /rashi\s*valaya|zodiac/i], ['ram', /\bram\b/i],
+  ['jai', /jai\s*prakash/i], ['observer', /observer/i],
+];
+
+/**
+ * Jantar Mantar: the compound wall polygon (the closed way that contains the site node and has a compound-sized area) and the
+ * instruments mapped inside it (man_made=observatory, sundial clocks, named yantras), each with its real footprint and axis.
+ * Returns {} when OSM has no such node: nothing is invented.
+ */
+export function resolveSites(elements) {
+  const sites = {};
+  resolveHawaMahalSite(elements, sites);
+  const node = elements.find((e) => e.type === 'node' && e.tags && /jantar\s*mantar/i.test([e.tags.name, e.tags['name:en']].filter(Boolean).join(' ')) && (e.tags.historic || e.tags.tourism === 'attraction'));
+  if (!node) return sites;
+  const np = project(node.lat, node.lon);
+  let wall = null;
+  for (const el of elements) {
+    if (el.type !== 'way' || !el.geometry || !el.tags || el.tags.building || el.tags.highway) continue;
+    const pts = projectGeom(el.geometry);
+    if (pts.length < 5) continue;
+    const ring = cleanRing(pts, 3);
+    if (!ring) continue;
+    const area = Math.abs(signedArea(ring));
+    if (area < 5000 || area > 80000 || !pointInRing(np.x, np.z, ring)) continue;
+    const better = !wall || (el.tags.barrier && !wall.barrier) || (!!el.tags.barrier === !!wall.barrier && area < wall.area);
+    if (better) wall = { id: `w${el.id}`, ring, area, barrier: !!el.tags.barrier };
+  }
+  const inst = [];
+  if (wall) {
+    for (const el of elements) {
+      if (el.type !== 'way' || !el.geometry || !el.tags) continue;
+      const t = el.tags;
+      const isInst = t.man_made === 'observatory' || (t.amenity === 'clock' && t.display === 'sundial') || (t.building && /yantra|samrat|observer/i.test(t.name || ''));
+      if (!isInst) continue;
+      const ring = cleanRing(projectGeom(el.geometry), 3);
+      if (!ring) continue;
+      const c = centroid(ring);
+      if (!pointInRing(c[0], c[1], wall.ring)) continue;
+      const b = orientedBox(ring);
+      if (!b) continue;
+      const name = t.name || t['name:en'] || null;
+      const cls = (INSTRUMENT_CLASSES.find(([, re]) => re.test(name || '')) || ['other'])[0];
+      const r1 = (v) => Math.round(v * 10) / 10;
+      inst.push({ id: `w${el.id}`, name, cls, x: r1(c[0]), z: r1(c[1]), len: r1(b.len), dep: r1(b.dep), ux: Math.round(b.ux * 1000) / 1000, uz: Math.round(b.uz * 1000) / 1000 });
+    }
+  }
+  sites.jantarMantar = {
+    source: 'osm',
+    node: { x: Math.round(np.x * 10) / 10, z: Math.round(np.z * 10) / 10 },
+    wallId: wall ? wall.id : null,
+    area: wall ? Math.round(wall.area) : null,
+    ring: wall ? wall.ring.map((q) => [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10]) : null,
+    instruments: inst,
+  };
+  return sites;
+}
+
+/**
+ * Hawa Mahal is only a node in OSM (historic=monument), sitting inside a larger building polygon. The palace's celebrated facade is its EAST face
+ * (docs/LANDMARK_FACTS.md), so the pose is derived from that polygon's oriented box and the node. The smallest containing building wins.
+ */
+function resolveHawaMahalSite(elements, sites) {
+  const node = elements.find((e) => e.type === 'node' && e.tags && /hawa\s*mahal/i.test([e.tags.name, e.tags['name:en']].filter(Boolean).join(' ')) && (e.tags.historic || e.tags.tourism === 'attraction'));
+  if (!node) return;
+  const np = project(node.lat, node.lon);
+  let best = null;
+  for (const b of extractBuildings(elements)) {
+    if (!pointInRing(np.x, np.z, b.outer)) continue;
+    const area = Math.abs(signedArea(b.outer));
+    if (!best || area < best.area) best = { id: b.id, area, outer: b.outer };
+  }
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const site = { source: 'osm', node: { x: r1(np.x), z: r1(np.z) }, block: null };
+  if (best) {
+    const box = orientedBox(best.outer);
+    site.block = {
+      id: best.id,
+      area: Math.round(best.area),
+      ring: best.outer.map((q) => [r1(q[0]), r1(q[1])]),
+      box: { cx: r1(box.cx), cz: r1(box.cz), ux: Math.round(box.ux * 1000) / 1000, uz: Math.round(box.uz * 1000) / 1000, len: r1(box.len), dep: r1(box.dep) },
+    };
+  }
+  sites.hawaMahal = site;
 }

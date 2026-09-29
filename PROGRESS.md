@@ -7,33 +7,27 @@ Living log. A resumed session should read this first.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Scaffold, Vite build, perf overlay, tier detection | done |
-| 2 | Data pipeline (Overpass + terrain, baking, chunking) | terrain: **done** (2.6 MB baked); OSM fetch+bake scripts done and unit-tested, **data BLOCKED** (see below) |
-| 3 | Terrain, streets, OSM buildings, real-metre facades | **code done + verified on synthetic lab district**; real-city output waits on OSM data |
-| 4 | Hand-modelled landmarks, Amer/Nahargarh silhouettes | **partial**: Hawa Mahal (exactly 953 instanced windows), Jantar Mantar, Jal Mahal modelled + tested; NOT yet wired into the scene; City Palace, gates, forts not started |
-| 5 | Sky, sun, moon, materials, time of day | **mostly done** (astronomy verified, sky LUT + twilight model, clouds, stars, moon, IBL, CSM, post); tuning ongoing |
+| 2 | Data pipeline (Overpass + terrain, baking, chunking) | **done, real data baked** (69 Overpass tiles, OSM timestamp 2026-09-29T10:32Z; terrain 2.6 MB; total 7.4 MB) |
+| 3 | Terrain, streets, OSM buildings, real-metre facades | done; real city seen and judged (see Task A verdict) |
+| 4 | Landmarks | **wired**: Hawa Mahal (953 windows), Jantar Mantar (real OSM layout), Jal Mahal (real OSM footprint), Chandra Mahal (7 levels), Mubarak Mahal, city gatehouses, OSM wall solids, OSM-driven Amer/Jaigarh/Nahargarh masses. Polish outstanding, see shortfalls |
+| 5 | Sky, sun, moon, materials, time of day | mostly done; this session: city-realistic star field, cloud grain, night cloud fade |
 | 6 | Weather | pending |
 | 7 | Traffic + people (worker), birds, cows | pending |
 | 8 | Festival, night, kite modes | pending |
 | 9 | Spatial audio | pending |
 | 10 | Cinematic tour, free-fly, touch, compact UI | pending |
-| 11 | Verification loop, budgets, fixes | pending |
+| 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers; matrix + reviewer pass pending |
 | 12 | README, final push | pending |
 
-## BLOCKER: network allow-list (found in phase 1)
+## DECISION NEEDED (owner): OSM has no buildings for most of the Walled City's bazaar blocks
 
-Probed from the sandbox (HTTP CONNECT via the agent proxy):
-
-- **Denied (403):** `overpass-api.de`, `z.overpass-api.de`, `lz4.overpass-api.de`, `overpass.kumi.systems`, `overpass.private.coffee`, `overpass.openstreetmap.fr`, `overpass.osm.jp`, `maps.mail.ru`, `api.openstreetmap.org`, `download.geofabrik.de`, `planet.openstreetmap.org`, `nominatim.openstreetmap.org`, `en.wikipedia.org`, `www.wikidata.org`, `commons.wikimedia.org`, `whc.unesco.org`, `cdn.jsdelivr.net`, `unpkg.com`, `cdnjs.cloudflare.com`.
-- **Allowed:** `registry.npmjs.org`, `raw.githubusercontent.com`, `s3.amazonaws.com` / `elevation-tiles-prod.s3.amazonaws.com` (Terrarium elevation), github.com (git).
-
-**Action needed from the owner:** add **`overpass-api.de`** to the environment's allowed domains
-(or set Network access to a broader level). Optional fallbacks: `overpass.kumi.systems`, `overpass.private.coffee`.
-Nothing else is required (npm packages are bundled; no CDN is used at runtime).
-
-Until then the OSM-dependent steps (building footprints, street graph, OSM landmark positions, traffic graph) are
-**not** baked, and nothing is faked or substituted. The pipeline scripts are written and unit-tested against
-tiny synthetic fixtures (tests/ only) so `npm run fetch:osm && npm run bake:osm` completes the job the moment the
-domain is reachable. The app shows an on-screen notice while the OSM chunks are absent.
+Measured on the real baked data (`node scripts/coverage-map.mjs` writes `shots-tmp/coverage.png`): the Walled City street grid and roads are mapped completely, but **building footprints are mapped only in strips**
+(Tripolia / Chandpole / parts of Badi Chaupar); whole blocks between the bazaars, including most of Johari Bazaar, have **no buildings in OSM at all** (9,734 buildings for the ~7 km x 7 km baked area, of which 99 % have inferred heights).
+The renderer shows exactly what OSM contains, so street-level views of Johari Bazaar show an empty plain instead of a continuous wall of shopfronts.
+Per the project rules nothing is invented or "filled in". Options (none has been done):
+1. Keep OSM-only (current). Honest, sparse.
+2. Allow one additional **real** footprint source for the missing blocks (e.g. Overture Maps buildings, which merge Microsoft/Google imagery-derived footprints with OSM; open licences, needs attribution). Real footprints, no real heights (heights stay inferred).
+3. Procedural infill of blank blocks. Fabricated by definition; only with explicit permission.
 
 ## Decisions
 
@@ -42,64 +36,57 @@ domain is reachable. The app shows an on-screen notice while the OSM chunks are 
 - Quality tiers live in `src/core/budgets.js` (settings + hard budgets); scripts read the same table.
 - Fixed-timestep loop (1/30 s) with clamped frame delta (0.1 s) in `src/core/loop.js`.
 - Dynamic resolution + optional fps cap (30 on phones) to limit heat.
-- Web fetch of Wikipedia is blocked; landmark facts are checked through web search snippets and recorded with URLs in `docs/LANDMARK_FACTS.md`.
+- Landmark facts are verified against pages that were actually opened (raw Wikipedia wikitext, Sahapedia, Incredible India, jantarmantar.org) and recorded with conflicts in `docs/LANDMARK_FACTS.md`.
+- The verification harness now runs on this Mac: the installed Google Chrome with ANGLE/Metal (real GPU). `GL_MODE=software` and `CHROMIUM_PATH` override it (cloud sandbox: SwiftShader).
+- OSM is the source of truth for positions and orientation. Hawa Mahal is only a node in OSM, so the facade is placed on the east edge of the building polygon that contains the node (facade faces east onto the street, as documented).
+- Walls: `barrier=city_wall` ways/areas are baked as 6 m x 3 m solids (thin `area=yes` polygons keep their outline; fat polygons and closed loops become ring walls; lines are buffered). Other wall kinds are still not rendered.
+- Land cover (water, vegetation, parks, built-up land) is rasterised from OSM polygons into a 10 m raster (`public/data/osm/cover.dat`, gzip, 23 KB) that the terrain shader samples; unmapped ground keeps the terrain shading.
 
 ## Phase 2 notes
 
 - `npm run bake:terrain` -> `public/data/terrain/` (near 16 km @ 15.6 m/texel in 4x4 chunks; far 72 km @ 141 m/texel; uint16 = metres*20).
-  City datum ~443 m; lake surface 411.0 m (modal flat SRTM texels near Jal Mahal); Nahargarh ridge ~588 m. SRTM is a surface model, so the app
-  smooths the terrain under the Walled City (urban DSM noise).
-- `npm run fetch:osm` -> `data-raw/osm/*.json` (git-ignored). Zones: core (Walled City + margin, full features), ring (low-detail fabric +
-  main roads + water), amer / jalmahal / nahargarh (forts, walls, buildings, lake). Multi-mirror, tiled, polite delays. Exits 2 and names the blocked hosts.
-- `npm run bake:osm` -> `public/data/osm/{manifest,graph,b_*,r_*,m_*}.json`, 500 m tiles, decimetre-int coordinates relative to the tile.
-  Height rule: `height` tag > `building:levels` x 3.3 m > inferred (distance-weighted log-mean of known neighbours within 90 m blended with class prior,
-  +-14 % deterministic jitter). `building:part` children replace their outline. Multipolygon relations stitched; holes assigned.
-- Unit tests (`npm test`) use `tests/fixtures/overpass-synthetic.mjs`: a SYNTHETIC fixture in the Overpass `out geom` shape. It is test-only and is never baked.
-- `npm run check:data` enforces the ~30 MB budget.
+  City datum ~443 m; lake surface 411.0 m; Nahargarh ridge ~588 m. SRTM is a surface model, so heights under the dense city carry urban noise.
+- `npm run fetch:osm` -> `data-raw/osm/*.json` (git-ignored). Zones: core (Walled City + margin), ring (low-detail fabric + main roads + water), amer / jalmahal / nahargarh. Primary endpoint is retried with backoff (Overpass answers 504 when busy), mirrors have short timeouts,
+  a failing tile is split into four and merged. Took ~25 minutes on 2026-09-29 (many transient 504s, no data was substituted).
+- `npm run bake:osm` -> `public/data/osm/{manifest,graph,cover.dat,b_*,r_*,m_*}.json`, 500 m tiles, decimetre-int coordinates. Height rule: `height` tag > `building:levels` x 3.3 m > inferred (distance-weighted log-mean of known neighbours within 90 m blended with class prior, +-14 % jitter).
+  Real data exposed and fixed: landmark name matches on bus routes / shops / stops (ranked + excluded now), gates mapped as building outlines, walls mapped as area polygons and hill-enclosing loops, OSM spelling "Jaighar", relation water bodies.
+- Real-data facts (baked 2026-09-29): 20,156 elements, 9,734 buildings (71 with `height`, 31 with `building:levels`, 9,632 inferred = 99 %), 9,289 road ways, street graph 16,047 nodes / 21,639 edges, 18 gates, 52 wall solids, 381 land-cover polygons.
+- `npm run check:data` enforces the ~30 MB budget and a 4 MB single-chunk limit.
 
-## Phase 3 notes
+## Phase 3 / 4 notes
 
-- Terrain: geometry-clipmap rings (8 rings, tier-scaled grid), heights fetched in the vertex shader from baked half-float textures; normals + Aravalli
-  rock/scrub/soil albedo in the fragment shader; Man Sagar water body from a baked flat-SRTM mask. Rings overlap by one coarse cell + polygon offset.
-- Buildings: hand extrusion in `src/world/buildingGeometry.js` (walls with u/v in real metres, courtyard holes, parapets, cornices, mumtys, black
-  water tanks, domes/pyramids, jharokha + chhatri instance lists). Winding verified by unit tests (`tests/building-geometry.test.mjs`).
-- Facade shader `src/world/facadeMaterial.js`: per-building palette (salmon/rose/ochre/lime/cream/grey), weathering, soot, streaks, plaster loss,
-  arched shopfront arcades + signboards + shutters on street-facing bazaar walls, cusped-arch windows, lit windows at night, distance-faded detail.
-- Streaming: `src/world/city.js` (500 m tiles, worker-built, LOD by distance, instance pools). Tile worker gets the height arrays so buildings sit on terrain.
-- **Renderer lab**: `npm run build:lab` builds `dist-lab/` with `VITE_LAB=1`, which swaps the network source for an in-memory bake of
-  `tests/fixtures/synthetic-district.mjs` (an imaginary bazaar quarter; clearly labelled on screen, never in the production bundle, never in `public/data`).
-  It exercises the *same* bake -> worker -> mesh -> shader path the real data will take.
+- Terrain: geometry-clipmap rings, heights in the vertex shader from baked half-float textures; normals + Aravalli rock/scrub/soil albedo + land cover in the fragment shader.
+- Roads: the road material's polygon offset now out-pulls every terrain ring (before it, roads were buried at street-level grazing angles).
+- Buildings: hand extrusion in `src/world/buildingGeometry.js`; facade shader in `src/world/facadeMaterial.js`; streaming in `src/world/city.js` (worker-built tiles, LOD by distance). The tile worker now drops the OSM footprints that hand-built landmarks replace (`src/world/landmarks/plan.js`: by id, inside an inflated ring, or mostly under the model footprint).
+- Landmarks: `src/world/landmarks/index.js` (`planLandmarks` -> pure plan + exclusion, `Landmarks` -> meshes). Models: hawaMahal.js, jantarMantar.js (`buildJantarMantarFromSite` uses the real OSM ring and instruments), jalMahal.js (parametrised to the mapped 59 x 55 m body), cityPalace.js (Chandra Mahal, Mubarak Mahal, generic gatehouse).
+- **Renderer lab**: `npm run build:lab` builds `dist-lab/` with `VITE_LAB=1` (synthetic district from `tests/fixtures/`, labelled on screen, never in the production bundle). Verified: `grep -l "Test Bazaar" dist/assets/*` prints nothing.
 
-## Known shortfalls
+## Task A verdict (real Walled City vs real photos, critical)
 
-(none recorded yet beyond the OSM blocker)
+Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
+- Roads, gates, Jantar Mantar (compound, Samrat Yantra, Ram Yantras, Rashi Valaya zone), Jal Mahal in Man Sagar, City Palace masses and the lane markings are recognisably Jaipur and positioned from OSM.
+- Arcaded shopfronts, cusped windows, shutters and signboards (facade shader) read as a Jaipur bazaar frontage where OSM has buildings (e.g. around Badi Chaupar).
+- **Does not match photos of Johari Bazaar / Hawa Mahal Road**: most bazaar blocks have no OSM buildings (see DECISION NEEDED), all heights are inferred boxes with flat roofs, no rooftop clutter, no street life yet (Phase 7), haze is uniform and milky.
 
+## Known shortfalls (honest)
 
-## STOPPED HERE (session ended by the owner) - resume checklist
+- OSM building coverage gap (above). Heights: 99 % inferred.
+- Hawa Mahal is a stylised pyramid: better than the first version (slim octagonal corner bays, projecting oriel units with white arch frames, per-window tint) but not a photographic facade; its rear block and the Saraogi block around it are approximations.
+- Jantar Mantar: only the 5 instruments OSM maps are placed; Jai Prakash, Laghu Samrat etc. are absent because their positions are not in any opened source.
+- Chandra Mahal / Mubarak Mahal / gatehouse proportions and storey heights are *approx* (footprints are real).
+- Forts: Amer / Jaigarh / Nahargarh are OSM buildings and 6 m wall solids on smooth SRTM hills in a generic limewash colour; no crenellations, no bespoke gate towers, wall colour not plumbed to the shader. Poor silhouette from a distance. Maota Lake is now painted from the OSM water polygon, the land is otherwise bare.
+- Terrain hills are smooth (15.6 m DEM) and the atmosphere reads pale/milky in wide shots (fog tuning pending); volumetric clouds are grainy (white-noise jitter, no temporal accumulation).
+- The Walled City boundary is not in OSM: `manifest.walledCity` = the brief's bounds (`approx-brief`).
+- Other wall kinds (`barrier=wall`, fences, retaining walls) and OSM `water`/`green` polygons from the `m_*` chunks are not rendered as geometry (water and green are in the land-cover raster).
+- Lamps: OSM has almost no `street_lamp` nodes in the area (0 instances), so night street lighting cannot come from OSM lamps; Phase 8 will use the street graph.
+- Facade shader `c` (building colour) is baked but not used by the shader.
+- Budget headroom: the **low tier is at 0.99 M of its 1.00 M triangle budget** (`npm run check:budgets`); any new geometry needs a cheaper far-LOD for that tier first. Medium is at 2.46 M / 2.80 M.
+- WebGPU is not used (WebGL2 only). Frame-rate numbers have not been measured yet.
 
-State of `main` at this point: builds (`npm run build`), 30/30 unit tests pass (`npm test`), data 2.75 MB.
+## Resume checklist
 
-What works and is verified by screenshots (docs/screenshots/):
-- terrain (real Terrarium data), Man Sagar water body, sky/atmosphere/clouds/fog/lighting, tier detection, perf overlay
-- the OSM city pipeline end-to-end on the synthetic lab district (`npm run build:lab`, see Phase 3 notes)
-
-What is NOT done (in priority order for a resumed session):
-1. **Allow `overpass-api.de`**, then `npm run fetch:osm && npm run bake:osm`, rebuild, look at the real city (nothing real has been seen yet).
-2. **Wire the landmarks in**: `src/world/landmarks/*` (Hawa Mahal, Jantar Mantar, Jal Mahal) exist and are unit-tested but nothing imports
-   them. Needs `landmarks/index.js` placing them at the sourced coordinates (docs/LANDMARK_FACTS.md) or the OSM positions, exclusion of the
-   overlapping OSM footprints in the tile worker, then screenshots. City Palace (Chandra Mahal 7 levels, Tripolia gate, Mubarak Mahal),
-   city gates + wall, Amer / Jaigarh / Nahargarh silhouettes still to be written (Jaigarh crest is at 26.9866 N 75.8319 E in the DEM).
-3. Phase 6 weather rendering (rain, wet-street planar reflection, lightning, dust) - state model exists in `src/weather/weather.js`, `uWet` hooks exist in shaders.
-4. Phase 7 traffic/people worker (IDM), birds, cows - needs the street graph from the OSM bake (`graph.json`).
-5. Phase 8 festival / night / kite modes (light grid, string lights, fireworks, kites).
-6. Phase 9 procedural spatial audio. 7. Phase 10 cinematic tour, free-fly + touch controls, compact monochrome UI (none exists yet:
-   only the perf overlay and `window.__jaipur` debug API).
-8. Phase 11 verification harness: `scripts/lib/session.mjs` + `scripts/shot.mjs` are the building blocks; still to write: the fixed-seed
-   matrix script, `scripts/check-budgets.mjs`, reviewer-subagent pass. Phase 12: full README.
-
-Known visual shortfalls (from my own review of the screenshots):
-- Terrain/haze still reads pale and low-contrast in wide shots; hills need more colour and contrast. The lab road surface is bland.
-- Cumulus shapes are decent at the high tier but grainy/blocky at low tier (4-step flat cloud mode); stars/moon not yet reviewed in a screenshot.
-- Lake outline comes from flat SRTM texels (0.45 km^2), smaller than the real Man Sagar; the OSM water polygon will replace it.
-- The sandbox software renderer auto-detects as the "low" tier; use `?tier=high` in shots to see the intended quality.
-- Landmark layouts (Jantar Mantar compound, Jal Mahal footprint 52x32 m, Hawa Mahal per-storey widths) are approximate; heights/counts follow sources.
+1. Owner decision on the building-coverage options above.
+2. Phase 6 weather rendering (rain streaks, wet-street planar reflection, lightning, dust) - state model in `src/weather/weather.js`, `uWet` hooks and cloud shadows exist.
+3. Phase 7 traffic/people worker (IDM) on `public/data/osm/graph.json`, birds, cows.
+4. Phase 8 festival / night / kite modes. 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
+7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.

@@ -2,8 +2,10 @@
 import { buildTileGeometry, RoadIndex } from './buildingGeometry.js';
 import { buildRoadGeometry } from './roadGeometry.js';
 import { HeightSampler, FlatSampler } from './heightSampler.js';
+import { isExcludedFull } from './landmarks/plan.js';
 
 let sampler = new FlatSampler(0);
+let exclude = null; // footprints replaced by hand-modelled landmarks (ids, rings, discs, model footprints)
 const TILE = 500;
 
 function roadIndexFrom(roadChunks) {
@@ -44,6 +46,7 @@ self.onmessage = (e) => {
   if (m.type === 'init') {
     if (m.flat != null) sampler = new FlatSampler(m.flat);
     else sampler = new HeightSampler(m.near, m.nearN, m.nearHalf, m.far, m.farN, m.farHalf);
+    exclude = m.exclude || null;
     self.postMessage({ type: 'ready' });
     return;
   }
@@ -51,6 +54,10 @@ self.onmessage = (e) => {
     const t0 = performance.now();
     const out = { type: 'tile', key: m.key, detail: m.detail, ix: m.ix, iz: m.iz };
     try {
+      if (m.b && exclude) {
+        const ox0 = m.b.t[0] * TILE, oz0 = m.b.t[1] * TILE;
+        m.b = { ...m.b, b: m.b.b.filter((rec) => !isExcludedFull(rec, ox0, oz0, exclude)) };
+      }
       if (m.b && m.b.b.length) {
         const rcs = (m.roads || []).map((rc) => rc && { ...rc, __dx: (rc.t[0] - m.ix) * TILE, __dz: (rc.t[1] - m.iz) * TILE });
         const roads = roadIndexFrom(rcs);

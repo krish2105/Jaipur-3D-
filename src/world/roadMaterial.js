@@ -76,9 +76,11 @@ void roadShade(vec2 uvr, float cls, float wN, float dist){
 export function createRoadMaterial() {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0 });
   mat.userData.programKey = 'road';
+  // must out-pull EVERY terrain ring: the finest ring uses factor -(rings)*0.6 (about -5), and at street level (grazing angles) the
+  // depth slope is huge, so a weak road offset lets the terrain bury the roads
   mat.polygonOffset = true;
-  mat.polygonOffsetFactor = -2;
-  mat.polygonOffsetUnits = -2;
+  mat.polygonOffsetFactor = -12;
+  mat.polygonOffsetUnits = -12;
   const extra = { uReflTex: { value: null }, uRefl: { value: new THREE.Vector4(0, 0, 1, 1) } };
   mat.userData.extra = extra;
   mat.onBeforeCompile = (shader) => {

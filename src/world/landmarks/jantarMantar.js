@@ -152,8 +152,8 @@ function jaiPrakash(b, cx, cz) {
   for (let i = 0; i < 5; i++) b.box(cx + R + 0.6 + i * 0.3, 0, cz, 0.6, 1.5 - i * 0.3, 2.0, COL.limewash);
 }
 
-function ramYantra(b, cx, cz) {
-  const R = 4.6, H = 4.4;
+function ramYantra(b, cx, cz, sc = 1) {
+  const R = 4.6 * sc, H = 4.4 * sc;
   const seg = 28;
   for (let i = 0; i < seg; i++) {
     if (i % 7 === 0) continue; // openings for entry
@@ -163,14 +163,78 @@ function ramYantra(b, cx, cz) {
     const ids2 = [[a0, 0], [a1, 0], [a1, H], [a0, H]].map(([a, y]) => b.v(cx + Math.cos(a) * (R - 0.35), y, cz + Math.sin(a) * (R - 0.35), -Math.cos((a0 + a1) / 2), 0, -Math.sin((a0 + a1) / 2), COL.limewash));
     b.quad(ids2[0], ids2[1], ids2[2], ids2[3]);
   }
-  b.cyl(cx, 0, cz, 0.42, 0.42, H, 10, COL.limewash);
+  b.cyl(cx, 0, cz, 0.42 * sc, 0.42 * sc, H, 10, COL.limewash);
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
-    b.box(cx + Math.cos(a) * (R * 0.55), 0, cz + Math.sin(a) * (R * 0.55), R * 0.9, 0.7 + (i % 3) * 0.1, 0.2, COL.limewash, -a);
+    b.box(cx + Math.cos(a) * (R * 0.55), 0, cz + Math.sin(a) * (R * 0.55), R * 0.9, (0.7 + (i % 3) * 0.1) * sc, 0.2, COL.limewash, -a);
   }
-  b.cyl(cx, 0, cz, R - 0.3, R - 0.3, 0.25, 24, COL.cream);
+  b.cyl(cx, 0, cz, R - 0.3 * sc, R - 0.3 * sc, 0.25, 24, COL.cream);
 }
 
+/** compound wall along a ring (local metres): 2.8 m high, 0.9 m thick, merlons; paved floor inside */
+function compoundFromRing(b, ring, skirt = 0) {
+  const n = ring.length;
+  try { b.prism(ring, -0.02 - skirt, 0.14, COL.sand, COL.sand); } catch { /* keep going without the floor */ }
+  for (let i = 0; i < n; i++) {
+    const [x0, z0] = ring[i], [x1, z1] = ring[(i + 1) % n];
+    const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz);
+    if (L < 0.5) continue;
+    const yaw = Math.atan2(-dz / L, dx / L);
+    b.box((x0 + x1) / 2, -skirt, (z0 + z1) / 2, L + 0.6, 2.8 + skirt, 0.9, COL.pinkDeep, yaw);
+    b.merlons(x0, z0, x1, z1, 2.8, 0.5, 0.5, 0.45, 0.6, COL.limewash);
+  }
+}
+
+/**
+ * Jantar Mantar from OSM (manifest.sites.jantarMantar): real compound wall ring and the instruments that ARE mapped
+ * (Vrihat Samrat, Rashi Valaya zone, two Ram Yantras, Observer's room) at their real positions and footprints.
+ * Instruments that OSM does not map are not placed here (see buildJantarMantar's fallback layout and docs/LANDMARK_FACTS.md).
+ * Local frame: origin at the ring centroid, x east, z south, yaw 0 (the instruments are true-north aligned by design).
+ */
+export function buildJantarMantarFromSite(heroMat, site, groundSkirt = 2) {
+  const g = new THREE.Group();
+  g.name = 'JantarMantar';
+  const b = new MB();
+  let ox = 0, oz = 0;
+  for (const [x, z] of site.ring) { ox += x; oz += z; }
+  ox /= site.ring.length; oz /= site.ring.length;
+  const L = (x, z) => [x - ox, z - oz];
+  compoundFromRing(b, site.ring.map(([x, z]) => L(x, z)), groundSkirt);
+  const counts = { samrat: 0, rashi: 0, ram: 0, observer: 0 };
+  for (const it of site.instruments) {
+    const [cx, cz] = L(it.x, it.z);
+    if (it.cls === 'samrat') {
+      samrat(b, it.len / 44, cx, cz, true);
+      counts.samrat++;
+    } else if (it.cls === 'ram') {
+      ramYantra(b, cx, cz, Math.min(it.len, it.dep) / 9.2);
+      counts.ram++;
+    } else if (it.cls === 'rashi') {
+      // twelve zodiac dials laid out in the mapped zone (4 x 3); the zone is real, the exact dial positions inside it are approx
+      const cols = 4, rows = 3;
+      const u = [it.ux, it.uz], v = [-it.uz, it.ux];
+      let k = 0;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++, k++) {
+        const du = ((c + 0.5) / cols - 0.5) * (it.len - 6), dv = ((r + 0.5) / rows - 0.5) * (it.dep - 6);
+        samrat(b, 0.15 + (k % 3) * 0.012, cx + u[0] * du + v[0] * dv, cz + u[1] * du + v[1] * dv, false);
+      }
+      counts.rashi = k;
+    } else if (it.cls === 'observer') {
+      b.box(cx, 0, cz, it.len, 3.4, it.dep, COL.limewash);
+      b.dome(cx, 3.4, cz, Math.min(it.len, it.dep) * 0.5, 1.4, 10, 3, COL.pinkLight);
+      counts.observer++;
+    }
+  }
+  const mesh = new THREE.Mesh(b.build(), heroMat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  g.add(mesh);
+  g.userData.origin = { x: ox, z: oz };
+  g.userData.counts = counts;
+  g.userData.samratHeightM = 22.4 + 4.6 * 0.35 + 3.0 + 1.5;
+  return g;
+}
+
+/** Fallback layout (approx): used only when OSM has no Jantar Mantar site. */
 export function buildJantarMantar(heroMat) {
   const g = new THREE.Group();
   g.name = 'JantarMantar';

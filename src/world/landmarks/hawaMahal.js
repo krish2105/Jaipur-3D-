@@ -24,15 +24,37 @@ export function windowCounts(total = HAWA_WINDOWS, widths = WIDTH) {
   return cnt;
 }
 
-/** Window unit geometry: small semi-octagonal bay with an arched dark opening and a tiny dome. Front = +Z. */
+/**
+ * Window unit: a projecting semi-octagonal oriel (front facet + two angled cheeks) with a lime-white arch frame around a dark
+ * latticed opening, a sloping hood and a tiny dome. Front = +Z. ~150 triangles, instanced 953 times.
+ */
 function windowUnit() {
   const b = new MB();
-  b.box(0, 0, 0.13, 0.5, 0.74, 0.26, COL.pinkLight);
-  b.archOpening(0, 0.09, 0.262, 1, 0, 0, 1, 0.3, 0.56, COL.dark, true);
-  b.box(0, 0.74, 0.13, 0.56, 0.05, 0.32, COL.limewash); // eave
-  b.dome(0, 0.79, 0.13, 0.2, 0.15, 8, 2, COL.pinkLight);
-  b.box(0, -0.04, 0.11, 0.46, 0.05, 0.22, COL.limewash); // sill
+  b.box(0, 0, 0.09, 0.62, 0.74, 0.18, COL.pinkDeep);                  // back body
+  b.box(0, 0.02, 0.24, 0.36, 0.66, 0.16, COL.pinkLight);              // front facet (projects)
+  b.box(-0.235, 0.02, 0.17, 0.2, 0.66, 0.12, COL.pink, 0.72);         // left cheek (angled)
+  b.box(0.235, 0.02, 0.17, 0.2, 0.66, 0.12, COL.pink, -0.72);         // right cheek (angled)
+  b.archOpening(0, 0.09, 0.325, 1, 0, 0, 1, 0.34, 0.56, COL.limewash, true);   // white frame
+  b.archOpening(0, 0.1, 0.33, 1, 0, 0, 1, 0.24, 0.5, COL.dark, true);          // dark opening
+  b.box(0, 0.68, 0.2, 0.7, 0.06, 0.4, COL.limewash);                  // hood / eave
+  b.dome(0, 0.74, 0.2, 0.2, 0.17, 8, 2, COL.pinkLight);
+  b.box(0, -0.04, 0.2, 0.5, 0.05, 0.3, COL.limewash);                 // sill
   return b.build();
+}
+
+/** slim octagonal corner bay with a row of arched openings and a domed cap; replaces the smooth fat cylinders */
+function cornerBay(b, tx, y, tz, h) {
+  b.cyl(tx, y, tz, 0.78, 0.74, h, 8, COL.pinkLight);
+  b.cyl(tx, y + h * 0.5 - 0.5, tz, 0.84, 0.84, 0.16, 8, COL.limewash);         // mid string course
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+    if (Math.abs(Math.cos(a)) < 0.2 && Math.sin(a) < 0) continue;                // not on the back
+    const nx = Math.cos(a), nz = Math.sin(a);
+    b.archOpening(tx + nx * 0.72, y + 0.55, tz + nz * 0.72, -nz, nx, nx, nz, 0.3, h * 0.55, COL.dark, true);
+  }
+  b.cyl(tx, y + h, tz, 0.95, 0.95, 0.18, 8, COL.limewash);
+  b.dome(tx, y + h + 0.18, tz, 0.86, 0.95, 10, 4, COL.pinkLight, 0.1);
+  b.cyl(tx, y + h + 1.1, tz, 0.05, 0.02, 0.7, 6, COL.gold, false);
 }
 
 export function buildHawaMahal(heroMat, propMat) {
@@ -58,14 +80,8 @@ export function buildHawaMahal(heroMat, propMat) {
     // roof parapet + merlons (kangura)
     b.box(0, y + FLOOR_H, zf - 0.25, W, 0.55, 0.3, COL.pinkDeep);
     b.merlons(-W / 2, zf - 0.1, W / 2, zf - 0.1, y + FLOOR_H + 0.55, 0.42, 0.34, 0.34, 0.3, COL.limewash);
-    // corner semi-octagonal turrets with domes
-    for (const sx of [-1, 1]) {
-      const tx = sx * (W / 2 - 0.8), tz = zf + 0.5;
-      b.cyl(tx, y, tz, 1.15, 1.1, FLOOR_H + 0.55, 8, COL.pinkLight);
-      b.cyl(tx, y + FLOOR_H + 0.55, tz, 1.3, 1.3, 0.2, 8, COL.limewash);
-      b.dome(tx, y + FLOOR_H + 0.75, tz, 1.15, 1.25, 10, 4, COL.pinkLight, 0.08);
-      b.cyl(tx, y + FLOOR_H + 2.0, tz, 0.07, 0.02, 0.9, 6, COL.gold, false);
-    }
+    // corner semi-octagonal bays with domes (slim, arched, like the real facade)
+    for (const sx of [-1, 1]) cornerBay(b, sx * (W / 2 - 0.9), y, zf + 0.45, FLOOR_H + 0.55);
     // honeycomb of window units on this storey: hex-staggered rows, exactly counts[f] units
     const n = counts[f];
     const usable = FLOOR_H - 1.0;
@@ -114,8 +130,16 @@ export function buildHawaMahal(heroMat, propMat) {
   const inst = new THREE.InstancedMesh(windowUnit(), heroMat, HAWA_WINDOWS);
   inst.name = 'HawaMahalWindows';
   const m = new THREE.Matrix4();
-  winPos.forEach((p, i) => { m.makeTranslation(p[0], p[1], p[2]); inst.setMatrixAt(i, m); });
+  const tint = new THREE.Color();
+  winPos.forEach((p, i) => {
+    m.makeTranslation(p[0], p[1], p[2]); inst.setMatrixAt(i, m);
+    // sandstone never weathers evenly: +-9 % value and a slight warm/cool drift per window (deterministic)
+    const h = Math.abs(Math.sin(i * 12.9898 + p[1] * 78.233)) % 1, k = 0.91 + 0.18 * h;
+    tint.setRGB(k * (1 + 0.05 * (h - 0.5)), k, k * (1 - 0.06 * (h - 0.5)));
+    inst.setColorAt(i, tint);
+  });
   inst.instanceMatrix.needsUpdate = true;
+  inst.instanceColor.needsUpdate = true;
   inst.castShadow = true; inst.receiveShadow = true;
   g.add(inst);
   g.userData.windowCount = winPos.length;
