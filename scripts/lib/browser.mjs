@@ -47,9 +47,12 @@ export const GL_ARGS = GL_MODE === 'gpu'
       '--disable-dev-shm-usage',
     ];
 
+/** UNCAPPED=1 removes vsync / the 60 Hz frame limit so the frame time shows real GPU+CPU cost (headroom), not the display refresh */
+const UNCAPPED = process.env.UNCAPPED === '1' ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : [];
+
 export async function launch(extraArgs = []) {
   if (!existsSync(CHROMIUM)) throw new Error(`Chromium/Chrome not found at ${CHROMIUM}. Set CHROMIUM_PATH.`);
-  return chromium.launch({ executablePath: CHROMIUM, headless: true, args: [...GL_ARGS, ...extraArgs] });
+  return chromium.launch({ executablePath: CHROMIUM, headless: true, args: [...GL_ARGS, ...UNCAPPED, ...extraArgs] });
 }
 
 /** Start `vite preview` on dist/ (build first) and resolve with {url, stop}. */

@@ -233,7 +233,8 @@ export class City {
       const k = i * 7;
       const sc = a[k + 4] / 1.56;
       q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, a[k + 3]);
-      p.set(ox + a[k], a[k + 1] + this._ground(ox + a[k], oz + a[k + 2]), oz + a[k + 2]);
+      // instance heights from the tile worker are ABSOLUTE (they already include the building's base height): adding the terrain height again floats them
+      p.set(ox + a[k], a[k + 1], oz + a[k + 2]);
       s.set(sc, sc, sc);
       M.compose(p, q, s);
     });
@@ -248,7 +249,7 @@ export class City {
     this.pools.chhatri.write(r, (i, M) => {
       const k = i * 5;
       q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, a[k + 4] * 6.28);
-      p.set(ox + a[k], a[k + 1] + this._ground(ox + a[k], oz + a[k + 2]), oz + a[k + 2]);
+      p.set(ox + a[k], a[k + 1], oz + a[k + 2]); // absolute height, see above
       const sc = a[k + 3] * 0.9;
       s.set(sc, sc, sc);
       M.compose(p, q, s);

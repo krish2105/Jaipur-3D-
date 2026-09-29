@@ -75,3 +75,20 @@ test('road index flags walls facing a street and bazaar streets', () => {
   assert.ok(idx.query(50, 8).bazaar);
   assert.ok(!idx.query(50, 60).face);
 });
+
+test('instance heights (jharokhas, chhatris) are ABSOLUTE: they sit on the building, wherever the ground is', () => {
+  const chunk = chunkFromFixture();
+  // put every building on ground that is 120 m up: instances must follow (city.js must not add the terrain height a second time)
+  const ground = new Float32Array(chunk.b.length * 2);
+  for (let i = 0; i < chunk.b.length; i++) { ground[i * 2] = 120; ground[i * 2 + 1] = 1.3; }
+  const roads = new RoadIndex();
+  roads.addPolyline([[-100, 0], [700, 0]], 12, 'Test Bazaar Road', 'primary');
+  const g = buildTileGeometry(chunk, { detail: true, roads, ground });
+  const all = [...g.inst.jharokha.filter((_, i) => i % 7 === 1), ...g.inst.chhatri.filter((_, i) => i % 5 === 1)];
+  assert.ok(all.length > 0, 'the fixture produces instances');
+  for (const y of all) assert.ok(y >= 120 && y < 120 + 80, 'instance y is an absolute height on the building: ' + y);
+  // and the mesh itself agrees: its lowest wall vertex is near the base
+  let minY = 1e9;
+  for (let i = 1; i < g.pos.length; i += 3) minY = Math.min(minY, g.pos[i]);
+  assert.ok(minY > 120 - 5 && minY < 120, 'mesh base ' + minY);
+});

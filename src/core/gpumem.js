@@ -2,7 +2,7 @@
 // Nothing here measures time: texture memory is estimated from dimensions/format, instances are counted from the scene.
 import * as THREE from 'three';
 
-const CH = { [THREE.RedFormat]: 1, [THREE.RGFormat]: 2, [THREE.RGBFormat]: 3, [THREE.RGBAFormat]: 4, [THREE.DepthFormat]: 1, [THREE.DepthStencilFormat]: 1, [THREE.AlphaFormat]: 1, [THREE.LuminanceFormat]: 1 };
+const CH = { [THREE.RedFormat]: 1, [THREE.RGFormat]: 2, [THREE.RGBFormat]: 3, [THREE.RGBAFormat]: 4, [THREE.DepthFormat]: 1, [THREE.DepthStencilFormat]: 1, [THREE.AlphaFormat]: 1 };
 
 function bytesPerChannel(type) {
   switch (type) {

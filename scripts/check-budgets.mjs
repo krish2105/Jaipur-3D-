@@ -39,7 +39,10 @@ for (const tier of tiers) {
         if (wx === 'monsoon') { a.weather.s.rain = 1; a.weather.s.wetness = 1; a.weather.s.puddles = 1; a.weather.strikeNow(0.4); }
         const g = (x, z) => a.hf.heightAt(x, z);
         a.setView([eye[0], g(eye[0], eye[1]) + eh, eye[1]], [look[0], g(look[0], look[1]) + (eh > 100 ? 0 : 8), look[1]], fov);
+        // street life must be measured where the camera is: re-seed the population around the view, let the worker run a little, then settle tiles
+        if (a.life) { a.life.teleport(a); await a.life.run(a, 1); }
         await a.city.settle(a.camera, 90000);
+        if (a.life) await a.life.run(a, 60);
         a.renderStill(3);
         return a.resourceReport();
       }, [eye, look, eh, fov, wx]);

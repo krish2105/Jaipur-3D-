@@ -20,6 +20,7 @@ import { planLandmarks, Landmarks } from './world/landmarks/index.js';
 import { estimateTextureMB, countInstances } from './core/gpumem.js';
 import { WeatherFx } from './weather/fx.js';
 import { PlanarReflection } from './render/reflection.js';
+import { Life } from './sim/life.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -105,6 +106,13 @@ export class App {
       const ex = this.city.roadMat.userData.extra;
       ex.uReflTex.value = this.reflection.rt.texture;
       ex.uReflMat.value = this.reflection.textureMatrix;
+    }
+
+    // street life (traffic, people, cows, pigeons): worker simulation on the baked OSM street graph; skipped in the synthetic lab
+    if (!this.labMode) {
+      progress('street life');
+      this.life = new Life({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, base: import.meta.env.BASE_URL });
+      await this.life.init(this);
     }
 
     this.overlay = new PerfOverlay(this.perf, () => this.reportContext());
@@ -247,7 +255,7 @@ export class App {
       gpu: this.detected.info.gpu,
       detected: this.detected.tier,
       reasons: this.detected.reasons,
-      extra: this.perf.extra,
+      extra: { ...this.perf.extra, ...(this.life ? { life: `${this.life.stats.veh} veh ${this.life.stats.ped} ppl ${this.life.stats.cow} cow ${this.life.stats.bird} birds` } : {}) },
     };
   }
 
@@ -255,6 +263,7 @@ export class App {
   update(dt) {
     this.clock.step(dt);
     this.weather.update(dt, this.clock.speed);
+    this.life?.update(dt, this);
     for (const s of this.systems) s.update?.(dt, this);
   }
 
@@ -269,6 +278,7 @@ export class App {
     ENV.uFog.value.x *= this.debug.fogScale;
     this.updateWetUniforms();
     this.fx.frame(dt, this);
+    this.life?.frame(dt, this);
     this.lighting.update(this.env, dt);
     this.terrain.update(cam);
     this.updateVeg();

@@ -12,7 +12,7 @@ Living log. A resumed session should read this first.
 | 4 | Landmarks | **wired**: Hawa Mahal (953 windows), Jantar Mantar (real OSM layout), Jal Mahal (real OSM footprint), Chandra Mahal (7 levels), Mubarak Mahal, city gatehouses, OSM wall solids, OSM-driven Amer/Jaigarh/Nahargarh masses. Polish outstanding, see shortfalls |
 | 5 | Sky, sun, moon, materials, time of day | mostly done; this session: city-realistic star field, cloud grain, night cloud fade |
 | 6 | Weather | **done** (verified by stills on all tiers; see Phase 6 notes) |
-| 7 | Traffic + people (worker), birds, cows | pending |
+| 7 | Traffic + people (worker), birds, cows | **done** (IDM traffic, bazaar-weighted pedestrians, cows, pigeon flocks; verified in tests, budgets and live on the real GPU; kites deferred to Phase 8) |
 | 8 | Festival, night, kite modes | pending |
 | 9 | Spatial audio | pending |
 | 10 | Cinematic tour, free-fly, touch, compact UI | pending |
@@ -74,12 +74,25 @@ Per the project rules nothing is invented or "filled in". Options (none has been
 - Budgets: the gate now includes rainy and dusty worst cases; **medium triangle budget raised 2.8 M -> 3.2 M** because the reflection pass measured +0.64 M at street level (tiles are drawn whole; finer tile splitting is the fix if real medium-GPU frame times need it).
 - `scripts/weather-shots.mjs` renders the same views under every preset.
 
+## Phase 7 notes (street life)
+
+- **Sim** (`src/sim/`): pure, deterministic `TrafficSim` on the baked street graph (`graph.js`: polylines, left lateral offset, one-way adjacency), SoA typed arrays, fixed 1/30 s step, Intelligent Driver Model (`idm.js`) with per-type parameters, left-hand traffic, alternating-axis signals, node locks (9 s force timeout so a junction can never stay deadlocked).
+  Vehicles: bikes, cars, autos, buses. Pedestrians are weighted toward bazaar street names / landmark hotspots (Badi Chaupar, Johari, Tripolia ...), cows rest or walk on small streets, pigeon flocks circle. Density follows the one sim clock (night quiet, rush hours busy, evening bazaar peak for people).
+- **Spawning** happens only outside the camera view cone and not next to the lens; agents are recycled when far or stuck (>45 s nearly still).
+- **Worker** (`trafficWorker.js`): steps the sim, posts snapshots; the main thread dead-reckons between snapshots (`life.js`), culls on the CPU and writes instance buffers. Rendering: one per-vertex-tagged material (tint / lamp / limb / pivot) for every agent type, `aColor` / `aAnim` instanced (`agentGeometry.js`, `agentMaterial.js`).
+- **Bugs the real graph exposed** (all fixed, with tests): spawning across short adjacent edges produced overlaps (now 12 m world-space spacing), two vehicles entering one node in the same step (per-step `entered` map), permanent-deadlock overlap (stuck recycling), IDM NaN when a type object lacked `delta` / `brakeLimit` (defaults in `idmAccel`).
+- **Tests** (`tests/idm.test.mjs`, `tests/traffic.test.mjs`): no overlaps, no teleporting, sane speeds, keeps left, flows; nothing spawns in view; population follows time of day; crowds at hot weights; bit-identical determinism for a seed; a run on the real baked graph near Badi Chaupar. 68 tests pass in total.
+- **Budgets**: every view in `check:budgets` is populated with life; all tiers within budget (worst triangles low 0.99 M / 1.00 M, medium 3.11 M / 3.20 M, high 4.86 M / 5.50 M). Sim cost measured 0.44 ms per step.
+- **Real GPU measurement** (`node scripts/live-check.mjs`, Chrome + ANGLE/Metal on the Apple M4 Pro, tier high, 1600 x 900, no console problems): vsync run holds 60 fps on 4 views. Uncapped at 1x: 100-131 fps. Uncapped at 2x device pixel ratio the dynamic resolution settles at pixel ratio 1.36-1.76 and gives 40-74 fps.
+  A/B on the street view at dsf 2 (uncapped): `pr=2` 37.4 fps, `pr=2&msaa=0` 48.9 fps, `pr=1.5` 79.8 fps, `pr=1.5&msaa=0` 117.1 fps. Reading: native Retina is fill-rate bound and 4x MSAA costs about 25-30 %. Hot-spot work (MSAA policy at high pixel ratios, faster DRS convergence, cloud step cost) belongs to Phase 11.
+- Known shortfalls of this phase: agent models are crude low-poly silhouettes (no walk-cycle skinning, only a limb/pivot swing), pedestrians do not react to vehicles, no kites yet (Phase 8), traffic does not react to rain, agents ignore roofs and pavements beyond the graph offset.
+
 ## Task A verdict (real Walled City vs real photos, critical)
 
 Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
 - Roads, gates, Jantar Mantar (compound, Samrat Yantra, Ram Yantras, Rashi Valaya zone), Jal Mahal in Man Sagar, City Palace masses and the lane markings are recognisably Jaipur and positioned from OSM.
 - Arcaded shopfronts, cusped windows, shutters and signboards (facade shader) read as a Jaipur bazaar frontage where OSM has buildings (e.g. around Badi Chaupar).
-- **Does not match photos of Johari Bazaar / Hawa Mahal Road**: most bazaar blocks have no OSM buildings (see DECISION NEEDED), all heights are inferred boxes with flat roofs, no rooftop clutter, no street life yet (Phase 7), haze is uniform and milky.
+- **Does not match photos of Johari Bazaar / Hawa Mahal Road**: most bazaar blocks have no OSM buildings (see DECISION NEEDED), all heights are inferred boxes with flat roofs, no rooftop clutter, no street life at the time of this verdict (added in Phase 7), haze is uniform and milky.
 
 ## Known shortfalls (honest)
 
@@ -94,13 +107,13 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 - Lamps: OSM has almost no `street_lamp` nodes in the area (0 instances), so night street lighting cannot come from OSM lamps; Phase 8 will use the street graph.
 - Facade shader `c` (building colour) is baked but not used by the shader.
 - Budget headroom: the **low tier is at 0.99 M of its 1.00 M triangle budget** (`npm run check:budgets`); any new geometry needs a cheaper far-LOD for that tier first. Medium is at 2.46 M / 2.80 M.
-- WebGPU is not used (WebGL2 only). Frame-rate numbers have not been measured yet.
+- WebGPU is not used (WebGL2 only). Real-GPU frame rates were first measured in Phase 7 (M4 Pro only; phones and mid-range GPUs are untested, see Phase 7 notes).
 
 - Weather: rain has no audio yet (Phase 9); planar reflection only mirrors roads (terrain plazas just darken); lightning illumination is one directional light; moving dust sprites are subtle next to the fog; cloud edges are still grainy at the low/medium step counts; rain does not stop under roofs.
 
 ## Resume checklist
 
 1. Owner decision on the building-coverage options above.
-2. Phase 7 traffic/people worker (IDM) on `public/data/osm/graph.json`, birds, cows.
+2. (Phase 7 done.)
 4. Phase 8 festival / night / kite modes. 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
 7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.
