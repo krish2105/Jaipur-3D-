@@ -21,6 +21,7 @@ import { estimateTextureMB, countInstances } from './core/gpumem.js';
 import { WeatherFx } from './weather/fx.js';
 import { PlanarReflection } from './render/reflection.js';
 import { Life } from './sim/life.js';
+import { Festival } from './festival/festival.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -115,6 +116,12 @@ export class App {
       await this.life.init(this);
     }
 
+    // night / festival: street lamps, festival strings, lit landmarks, fireworks, kites (needs the baked OSM graph + footprints; skipped in the lab)
+    if (!this.labMode) {
+      progress('festival');
+      this.festival = new Festival({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, landmarkItems: this.landmarkPlan ? this.landmarkPlan.items : [], base: import.meta.env.BASE_URL });
+    }
+
     this.overlay = new PerfOverlay(this.perf, () => this.reportContext());
     if (this.q.has('perf')) this.overlay.toggle(true);
     window.addEventListener('keydown', (e) => { if (e.key === '`' || (e.key === 'p' && !e.ctrlKey && !e.metaKey)) this.overlay.toggle(); });
@@ -134,8 +141,12 @@ export class App {
     };
 
     // initial state
-    this.setTime(this.q.get('t') ? +this.q.get('t') : 6.6);
+    const fest = this.q.get('festival');
+    const preset = this.q.get('preset') || (fest === 'diwali' || fest === 'sankranti' ? fest : null);
+    this.setTime(this.q.get('t') ? +this.q.get('t') : fest === 'diwali' ? 19.7 : fest === 'sankranti' ? 11 : 6.6, preset);
     if (this.q.get('weather')) this.setWeather(this.q.get('weather'), true);
+    else if (fest === 'sankranti') this.setWeather('winter', true);
+    if (fest && this.festival) this.festival.setMode(fest, this);
     this.sky.updateEnvironment(this.env);
     return this;
   }
@@ -208,6 +219,16 @@ export class App {
   setWeather(name, instant = false) {
     if (WEATHER_PRESETS[name]) this.weather.set(name, instant);
   }
+  /** festival mode: 'off' | 'diwali' | 'sankranti'. Moves the clock to the festival's evening (Diwali) or day (Sankranti) and picks matching weather. */
+  setFestival(mode, { moveClock = true } = {}) {
+    if (!this.festival) return false;
+    if (moveClock && mode !== 'off') {
+      this.clock.setPreset(mode, mode === 'diwali' ? 19.7 : 11);
+      this.setWeather(mode === 'sankranti' ? 'winter' : 'clear', true);
+    }
+    this.festival.setMode(mode, this);
+    return true;
+  }
   setView(pos, look, fov) {
     this.camera.position.set(pos[0], pos[1], pos[2]);
     this.camera.lookAt(look[0], look[1], look[2]);
@@ -255,7 +276,11 @@ export class App {
       gpu: this.detected.info.gpu,
       detected: this.detected.tier,
       reasons: this.detected.reasons,
-      extra: { ...this.perf.extra, ...(this.life ? { life: `${this.life.stats.veh} veh ${this.life.stats.ped} ppl ${this.life.stats.cow} cow ${this.life.stats.bird} birds` } : {}) },
+      extra: {
+        ...this.perf.extra,
+        ...(this.life ? { life: `${this.life.stats.veh} veh ${this.life.stats.ped} ppl ${this.life.stats.cow} cow ${this.life.stats.bird} birds` } : {}),
+        ...(this.festival ? { festival: `${this.festival.mode} ${this.festival.stats.bulbs} bulbs ${this.festival.stats.lamps} lamps ${this.festival.stats.kites} kites ${this.festival.stats.bursts} bursts` } : {}),
+      },
     };
   }
 
@@ -264,6 +289,7 @@ export class App {
     this.clock.step(dt);
     this.weather.update(dt, this.clock.speed);
     this.life?.update(dt, this);
+    this.festival?.update(dt, this);
     for (const s of this.systems) s.update?.(dt, this);
   }
 
@@ -279,6 +305,7 @@ export class App {
     this.updateWetUniforms();
     this.fx.frame(dt, this);
     this.life?.frame(dt, this);
+    this.festival?.frame(dt, alpha, this);
     this.lighting.update(this.env, dt);
     this.terrain.update(cam);
     this.updateVeg();

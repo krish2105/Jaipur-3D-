@@ -36,7 +36,17 @@ export const TIERS = {
       kites: 70,
       rainParticles: 9000,
       dustParticles: 1800,
-      lights: 96, // point-light pool for festival / night hot-spots
+      lights: 96, // (unused: the light grid replaced the point-light pool; kept so tiers stay symmetric)
+      glowBulbs: 5200, // festival bulbs / diyas drawn around the camera
+      glowRadius: 140,
+      lampPoles: 280,
+      lampRadius: 210,
+      wireSpans: 420,
+      lightGridN: 160, // light grid cells per side ...
+      lightGridSize: 576, // ... covering this many metres
+      fireworkParticles: 5000,
+      farGlow: 3200, // far street-lamp / bazaar glow sprites (aerial views of the night city)
+      farGlowRadius: 1300,
       audioVoices: 24,
       fpsCap: 0,
       skyCubeSize: 128,
@@ -74,6 +84,16 @@ export const TIERS = {
       rainParticles: 5000,
       dustParticles: 1000,
       lights: 48,
+      glowBulbs: 2400,
+      glowRadius: 105,
+      lampPoles: 150,
+      lampRadius: 160,
+      wireSpans: 200,
+      lightGridN: 112,
+      lightGridSize: 448,
+      fireworkParticles: 2600,
+      farGlow: 1500,
+      farGlowRadius: 850,
       audioVoices: 16,
       fpsCap: 0,
       skyCubeSize: 64,
@@ -113,6 +133,16 @@ export const TIERS = {
       rainParticles: 1800,
       dustParticles: 350,
       lights: 16,
+      glowBulbs: 500,
+      glowRadius: 60,
+      lampPoles: 40,
+      lampRadius: 100,
+      wireSpans: 60,
+      lightGridN: 64,
+      lightGridSize: 256,
+      fireworkParticles: 600,
+      farGlow: 0, // none on phones
+      farGlowRadius: 0,
       audioVoices: 10,
       fpsCap: 30,
       skyCubeSize: 32,

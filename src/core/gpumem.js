@@ -113,7 +113,10 @@ export function countInstances(scene) {
   let total = 0;
   const by = {};
   scene.traverse((o) => {
-    if (o.isInstancedMesh && o.visible) { total += o.count; by[o.name || 'instanced'] = (by[o.name || 'instanced'] || 0) + o.count; }
+    if (!o.visible) return;
+    if (o.isInstancedMesh) { total += o.count; by[o.name || 'instanced'] = (by[o.name || 'instanced'] || 0) + o.count; }
+    // particle systems (rain, dust, festival bulbs, fireworks) are InstancedBufferGeometry meshes: count what they actually draw
+    else if (o.isMesh && o.geometry && o.geometry.isInstancedBufferGeometry && o.geometry.instanceCount > 0 && o.geometry.instanceCount < 1e9) { total += o.geometry.instanceCount; by[o.name || 'particles'] = (by[o.name || 'particles'] || 0) + o.geometry.instanceCount; }
   });
   return { total, by };
 }

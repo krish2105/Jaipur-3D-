@@ -20,6 +20,13 @@ export const WEATHER_PRESETS = {
     rain: 0, dust: 1, storm: 1, mist: 0, windSpeed: 15, windDir: 1.05,
     mieScale: 260, fogGain: 6.5, fogFalloff: 1 / 700, dustTint: [1, 0.76, 0.42], lightningRate: 0,
   },
+  winter: {
+    // crisp January day with a steady breeze (Makar Sankranti kite weather). APPROX: the wind speed is a modelling choice so kites fly, not a climate record.
+    label: 'Winter breeze',
+    cloudCover: 0.12, cloudDensity: 0.8, cloudBase: 2100, cloudThick: 1000, cirrus: 0.3, overcast: 0,
+    rain: 0, dust: 0.07, storm: 0, mist: 0, windSpeed: 7, windDir: 0.42,
+    mieScale: 14, fogGain: 1.0, fogFalloff: 1 / 1300, dustTint: [1, 1, 1], lightningRate: 0,
+  },
   monsoon: {
     label: 'Monsoon',
     cloudCover: 0.97, cloudDensity: 1.9, cloudBase: 900, cloudThick: 2600, cirrus: 0, overcast: 0.9,

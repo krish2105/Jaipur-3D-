@@ -13,7 +13,7 @@ Living log. A resumed session should read this first.
 | 5 | Sky, sun, moon, materials, time of day | mostly done; this session: city-realistic star field, cloud grain, night cloud fade |
 | 6 | Weather | **done** (verified by stills on all tiers; see Phase 6 notes) |
 | 7 | Traffic + people (worker), birds, cows | **done** (IDM traffic, bazaar-weighted pedestrians, cows, pigeon flocks; verified in tests, budgets and live on the real GPU; kites deferred to Phase 8) |
-| 8 | Festival, night, kite modes | pending |
+| 8 | Festival, night, kite modes | **done** (light grid, generated street lamps, festival strings / roofline lights / diyas on real OSM facades, floodlit landmarks, fireworks, kites with string physics; Diwali moonless; see Phase 8 notes) |
 | 9 | Spatial audio | pending |
 | 10 | Cinematic tour, free-fly, touch, compact UI | pending |
 | 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers (incl. wet and dust worst cases); matrix + reviewer pass pending |
@@ -87,6 +87,22 @@ Per the project rules nothing is invented or "filled in". Options (none has been
   A/B on the street view at dsf 2 (uncapped): `pr=2` 37.4 fps, `pr=2&msaa=0` 48.9 fps, `pr=1.5` 79.8 fps, `pr=1.5&msaa=0` 117.1 fps. Reading: native Retina is fill-rate bound and 4x MSAA costs about 25-30 %. Hot-spot work (MSAA policy at high pixel ratios, faster DRS convergence, cloud step cost) belongs to Phase 11.
 - Known shortfalls of this phase: agent models are crude low-poly silhouettes (no walk-cycle skinning, only a limb/pivot swing), pedestrians do not react to vehicles, no kites yet (Phase 8), traffic does not react to rain, agents ignore roofs and pavements beyond the graph offset.
 
+## Phase 8 notes (night, festival, kites)
+
+- **Light grid** (`src/festival/lightgrid.js`, patch in `src/render/env.js`): a camera-following 160 x 160 (high) / 112 (medium) / 64 (low) half-float texture; rgb = coloured irradiance, a = terrain height. Every lit material reads it in the light loop (`lights_fragment_end` patch, `lightGridAt`): buildings, roads, terrain, props, landmarks, street life. No real point lights, no shader recompiles.
+  World-anchored (centre snaps to whole cells, re-centres after 18 % drift), rebuilt only when something changes (lamps / festival / landmarks fade, fireworks at ~20 Hz), disabled by day. Values are irradiance in directional-light units (full moon 0.62; night exposure is 7.6-9.8x).
+- **Street lamps** (`layout.js planLamps`): 17,137 lamps *generated* along OSM roads (approx, see docs/LANDMARK_FACTS.md); nearest 280 / 150 / 40 drawn as poles + emissive heads, every lamp splats light within the grid, a far sprite layer (`farGlow`) shows lamps and lit bazaars to 1.3 km so aerial night views are not dark.
+- **Festival** (`layout.js planFestival`, `festivalWorker.js`): computed in a worker from the baked graph + building chunks. Strings hang **only between two mapped OSM facades** (raycast on footprint edges); roofline lights and diyas go on any mapped facade of the decorated bazaars. Result on the real data: **42 spans, 191 roofline runs, 122 diya runs, 6,695 bulbs** (of 168 decorated street edges, 1,046 samples had no mapped wall on one side).
+  That is small because **OSM has almost no buildings along the bazaar streets** (the standing DECISION NEEDED above): nothing is invented to hide it, so Johari Bazaar is mostly lamps and bare street at night.
+  Irregularity: skewed spans, 1-2 strands, dead bulbs, random spacing, gold vs multicolour themes, per-bulb twinkle phase, diya flicker. Bulbs are HDR additive sprites (core + halo), depth tested, gathered nearest-first (5,200 / 2,400 / 500).
+- **Lit landmarks** (`landmarkLights.js`, hero material floodlight term in `kit.js`): warm floodlight sources in front of Hawa Mahal, around Chandra / Mubarak Mahal, gatehouses, Jantar Mantar compound and Jal Mahal (approx art direction), plus an emissive uplight term on the hero material that fades with height.
+- **Fireworks** (`fireworks.js`): one draw call, ballistic streaks with drag + gravity evaluated in the vertex shader (peony, chrysanthemum, willow, ring), rockets, HDR + bloom; show 19:30-00:40 IST, densest 20:30-23:00, placed in front of the camera; bursts light the street grid faintly and raise `events` for Phase 9 audio.
+- **Kites** (`kites.js`, `kiteRender.js`): verlet string (14 nodes, taut-only constraints) + aerodynamic point kite (fixed bridle angle), wind with shear + gusts + thermals, flyers on real rooftop anchors 45-300 m from the camera, random string cuts (kite fighting) with tumbling free flight, recycling of far kites. Rendering: instanced two-tone patang (translucent paper, minimum 5 px on screen) + string lines. Weather preset `winter` (7 m/s) drives Sankranti. Sim cost ~1 ms per fixed step for 70 kites.
+- **API**: `?festival=diwali|sankranti|off`, `?preset=diwali`, `app.setFestival(mode)`, `app.festival.flyerView()` (camera on a flyer's roof). UI controls come in Phase 10.
+- **Tests** (`tests/festival-layout`, `lightgrid`, `kites`, `festival-env`): facade raycasts, lamp geometry, strings anchored on real facades (real-data test), half floats, splat maths, bins, burst shapes, kite flight / cut / recycle / determinism, Diwali moonless, landmark lights: 68 -> 90 tests.
+- **Budgets**: `check:budgets` now includes night / Diwali / Hawa Mahal night / kite views and **counts particle instances** (rain, glow, fireworks) in `instances`; all tiers pass (low 5,549 / 6,000 and medium 14,447 / 15,000 instances are close: new particle systems need a cut elsewhere).
+- Known shortfalls: light pools from generated lamps look round from the air; bulbs are sprites (no wire glow, no reflection on wet streets beyond the planar pass); kites are specks beyond ~150 m (real size); fireworks have no smoke; no shop-front lamps / signs at night beyond the facade shader; grid is 2D (light does not reach into courtyards or under roofs differently).
+
 ## Task A verdict (real Walled City vs real photos, critical)
 
 Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
@@ -115,5 +131,5 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 
 1. Owner decision on the building-coverage options above.
 2. (Phase 7 done.)
-4. Phase 8 festival / night / kite modes. 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
+4. (Phase 8 done.) 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
 7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.

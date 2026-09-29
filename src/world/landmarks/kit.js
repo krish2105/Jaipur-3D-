@@ -179,6 +179,9 @@ export class MB {
 }
 
 /** Weathered hero stone: vertex colours * world-space noise, soot near the ground, drip stains, sun-bleached tops. */
+/** floodlight strength on the hand-modelled landmarks (rgb = warm flood colour x strength, 0 by day); driven by the festival controller */
+export const LANDMARK_LIGHT = { uLandLit: { value: new THREE.Vector3(0, 0, 0) } };
+
 export function createHeroMaterial(name = 'hero') {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 });
   mat.userData.programKey = 'hero';
@@ -186,10 +189,11 @@ export function createHeroMaterial(name = 'hero') {
   mat.onBeforeCompile = (shader) => {
     addEnvUniforms(shader);
     shader.vertexShader = shader.vertexShader
-      .replace('void main() {', 'varying vec3 vHWP; varying vec3 vHN;\nvoid main() {')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vHWP = (modelMatrix * vec4(position, 1.0)).xyz; vHN = normalize(mat3(modelMatrix) * normal);');
+      .replace('void main() {', 'varying vec3 vHWP; varying vec3 vHN; varying float vHLY;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vHWP = (modelMatrix * vec4(position, 1.0)).xyz; vHN = normalize(mat3(modelMatrix) * normal); vHLY = position.y;');
+    shader.uniforms.uLandLit = LANDMARK_LIGHT.uLandLit;
     shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', `${ENV_DECL}\nvarying vec3 vHWP; varying vec3 vHN;\nvoid main() {`)
+      .replace('void main() {', `${ENV_DECL}\nvarying vec3 vHWP; varying vec3 vHN; varying float vHLY;\nuniform vec3 uLandLit;\nvoid main() {`)
       .replace(
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
@@ -211,6 +215,15 @@ export function createHeroMaterial(name = 'hero') {
           c = mix(c, c * vec3(1.12, 1.03, 0.9), (1.0 - wall) * 0.5);
           c *= 1.0 - 0.18 * uWet.x;
           diffuseColor.rgb = c;
+        }`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        /* glsl */ `#include <emissivemap_fragment>
+        {
+          // floodlit at night: warm light from the street side, strongest on the lower storeys and on vertical faces (hVLY = height above the model's ground)
+          float wallF = 1.0 - abs(vHN.y) * 0.7;
+          totalEmissiveRadiance += diffuseColor.rgb * uLandLit * (0.09 * wallF * exp(-vHLY * 0.035));
         }`,
       );
   };

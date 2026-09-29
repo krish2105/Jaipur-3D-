@@ -62,6 +62,18 @@ uniform float uFestival;
 uniform sampler2D uLightGrid;
 uniform vec4 uLightGridP;
 ${GLSL_CLOUD_FN}
+// light grid (src/festival/lightgrid.js): coloured street / festival light around the camera, thinning with height above the ground it was cast on
+vec3 lightGridAt(vec3 wp, vec3 n){
+  if (uLightGridP.w < 0.5) return vec3(0.0);
+  vec2 uv = (wp.xz - uLightGridP.xy) / uLightGridP.z + 0.5;
+  vec2 e = min(uv, 1.0 - uv);
+  float edge = smoothstep(0.0, 0.07, min(e.x, e.y));
+  if (edge <= 0.0) return vec3(0.0);
+  vec4 g = texture2D(uLightGrid, uv);
+  float h = max(wp.y - g.a, 0.0);
+  float up = n.y * 0.5 + 0.5;
+  return g.rgb * (exp(-h * 0.055) * edge * (0.55 + 0.45 * up));
+}
 float envMiePhase(float c, float g){
   float k = 3.0 / (8.0 * PI) * (1.0 - g * g) / (2.0 + g * g);
   return k * (1.0 + c * c) / pow(max(1.0 + g * g - 2.0 * g * c, 1e-3), 1.5);
@@ -76,8 +88,8 @@ vec3 envSkyAt(vec3 dir){
   vec3 c = texture2D(uSkyLUT, vec2(clamp(phi / PI, 0.002, 0.998), clamp(v, 0.003, 0.997))).rgb;
   // faint night-sky glow (airglow / starlight / moon-scattered)
   c += vec3(0.0035, 0.0055, 0.011) * uSkyAux.x;
-  // city light dome / horizon airglow: the horizon never goes pure black at night
-  c += vec3(0.014, 0.013, 0.016) * uSkyAux.x * pow(1.0 - abs(dir.y), 6.0);
+  // city light dome / horizon airglow: the horizon never goes pure black at night (warmer and brighter while the city is lit for a festival)
+  c += mix(vec3(0.014, 0.013, 0.016), vec3(0.030, 0.021, 0.014), uFestival) * uSkyAux.x * pow(1.0 - abs(dir.y), 6.0);
   return c;
 }
 #endif
@@ -125,6 +137,11 @@ const FOG_FRAGMENT = /* glsl */ `
 const CLOUD_SHADOW_INJECT = /* glsl */ `
   { vec3 envWP = cameraPosition + geometryPosition * mat3(viewMatrix); directLight.color *= cloudSunShadow(envWP, uSunDir); }
 `;
+// street / festival light: added as diffuse light at the end of the light loop of every lit material (see lightgrid.js).
+// Grid values are irradiance in the same units as the directional light intensity (sun 6.2 at noon, full moon 0.62).
+const LIGHT_GRID_INJECT = /* glsl */ `
+  { vec3 lgW = cameraPosition + geometryPosition * mat3(viewMatrix); vec3 lgN = geometryNormal * mat3(viewMatrix); reflectedLight.directDiffuse += material.diffuseColor * (RECIPROCAL_PI * lightGridAt(lgW, lgN)); }
+`;
 
 let patched = false;
 
@@ -157,6 +174,7 @@ export function patchLightChunk() {
   THREE.ShaderChunk.lights_pars_begin = ENV_DECL + THREE.ShaderChunk.lights_pars_begin;
   s = s.replace(/getDirectionalLightInfo\( directionalLight, directLight \);/g, (m) => m + CLOUD_SHADOW_INJECT);
   THREE.ShaderChunk.lights_fragment_begin = s;
+  THREE.ShaderChunk.lights_fragment_end = THREE.ShaderChunk.lights_fragment_end + LIGHT_GRID_INJECT;
 }
 
 export { ENV_DECL };
