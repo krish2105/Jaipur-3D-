@@ -59,6 +59,7 @@ uniform float uVignette;
 uniform float uTime;
 uniform vec3 uGrade;      // x saturation, y contrast, z warmth
 uniform float uFlash;
+uniform float uDustGrade; // 0..1: dust storm colour grade (ochre light, lifted shadows)
 float hashd(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 fxaa(vec2 uv){
   vec3 c = texture2D(tScene, uv).rgb;
@@ -81,6 +82,7 @@ void main(){
   float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = mix(vec3(l), col, uGrade.x);
   col *= vec3(1.0 + 0.05 * uGrade.z, 1.0, 1.0 - 0.06 * uGrade.z);
+  col = mix(col, col * vec3(1.18, 0.86, 0.50) + vec3(0.012, 0.006, 0.0) * uDustGrade, uDustGrade);
   vec2 q = vUv - 0.5;
   col *= 1.0 - uVignette * smoothstep(0.25, 0.85, dot(q, q) * 2.0);
   gl_FragColor = vec4(col, 1.0);
@@ -114,7 +116,7 @@ export class PostFX {
       depthWrite: false,
       uniforms: {
         tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0.05 }, uExposure: { value: 1 }, uTexel: { value: new THREE.Vector2() },
-        uFxaa: { value: 0 }, uVignette: { value: 0.22 }, uTime: { value: 0 }, uGrade: { value: new THREE.Vector3(1.0, 1, 0) }, uFlash: { value: 0 },
+        uFxaa: { value: 0 }, uVignette: { value: 0.22 }, uTime: { value: 0 }, uGrade: { value: new THREE.Vector3(1.0, 1, 0) }, uFlash: { value: 0 }, uDustGrade: { value: 0 },
       },
     });
     this.msaa = settings.msaa ?? 0;
@@ -171,7 +173,7 @@ export class PostFX {
   }
 
   /** After the scene has been rendered into `this.rt`, produce the final canvas image. */
-  finish({ exposure, bloom, time, flash = 0, vignette = 0.22, grade }) {
+  finish({ exposure, bloom, time, flash = 0, vignette = 0.22, grade, dust = 0 }) {
     const r = this.renderer;
     const prevAuto = r.autoClear;
     r.autoClear = false;
@@ -210,6 +212,7 @@ export class PostFX {
     u.uVignette.value = vignette;
     u.uTime.value = time;
     u.uFlash.value = flash;
+    u.uDustGrade.value = dust;
     if (grade) u.uGrade.value.set(grade[0], grade[1], grade[2]);
     this._pass(this.compMat, null, true);
     r.autoClear = prevAuto;

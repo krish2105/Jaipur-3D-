@@ -17,6 +17,10 @@ const VIEWS = [
   ['drone-high', [-100, 1500], [-100, 0], 420, 55],
   ['hawa-mahal', [150, 20], [40, -48], 6, 62],
   ['sky-only', [0, 0], [0, -4000], 40, 60],
+  // the reflection pass re-renders the near scene: budget it in the worst wet case (heavy rain + a lightning strike + dust flow)
+  ['street-monsoon', [140, 100], [10, 100], 2.6, 66, 'monsoon'],
+  ['drone-monsoon', [-200, 900], [-150, -300], 140, 55, 'monsoon'],
+  ['street-loo', [140, 100], [10, 100], 2.6, 66, 'loo'],
 ];
 
 const rows = [];
@@ -26,16 +30,19 @@ for (const tier of tiers) {
   try {
     const worst = { drawCalls: 0, triangles: 0, geometries: 0, textureMB: 0, instances: 0 };
     let detail = null;
-    for (const [label, eye, look, eh, fov] of VIEWS) {
-      const res = await sess.page.evaluate(async ([eye, look, eh, fov]) => {
+    for (const view of VIEWS) {
+      const [label, eye, look, eh, fov, wx = null] = view;
+      const res = await sess.page.evaluate(async ([eye, look, eh, fov, wx]) => {
         const a = window.__jaipur;
         a.setTime(15.5);
+        a.setWeather(wx || 'clear', true);
+        if (wx === 'monsoon') { a.weather.s.rain = 1; a.weather.s.wetness = 1; a.weather.s.puddles = 1; a.weather.strikeNow(0.4); }
         const g = (x, z) => a.hf.heightAt(x, z);
         a.setView([eye[0], g(eye[0], eye[1]) + eh, eye[1]], [look[0], g(look[0], look[1]) + (eh > 100 ? 0 : 8), look[1]], fov);
         await a.city.settle(a.camera, 90000);
         a.renderStill(3);
         return a.resourceReport();
-      }, [eye, look, eh, fov]);
+      }, [eye, look, eh, fov, wx]);
       for (const k of Object.keys(worst)) worst[k] = Math.max(worst[k], res[k]);
       if (!detail || res.textureMB > detail.textureMB) detail = res;
       console.log(`  ${tier.padEnd(6)} ${label.padEnd(20)} draws ${String(res.drawCalls).padStart(4)}  tris ${(res.triangles / 1e6).toFixed(2)}M  geo ${String(res.geometries).padStart(3)}  tex ${res.textureMB} MB  inst ${res.instances}`);

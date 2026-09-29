@@ -11,12 +11,12 @@ Living log. A resumed session should read this first.
 | 3 | Terrain, streets, OSM buildings, real-metre facades | done; real city seen and judged (see Task A verdict) |
 | 4 | Landmarks | **wired**: Hawa Mahal (953 windows), Jantar Mantar (real OSM layout), Jal Mahal (real OSM footprint), Chandra Mahal (7 levels), Mubarak Mahal, city gatehouses, OSM wall solids, OSM-driven Amer/Jaigarh/Nahargarh masses. Polish outstanding, see shortfalls |
 | 5 | Sky, sun, moon, materials, time of day | mostly done; this session: city-realistic star field, cloud grain, night cloud fade |
-| 6 | Weather | pending |
+| 6 | Weather | **done** (verified by stills on all tiers; see Phase 6 notes) |
 | 7 | Traffic + people (worker), birds, cows | pending |
 | 8 | Festival, night, kite modes | pending |
 | 9 | Spatial audio | pending |
 | 10 | Cinematic tour, free-fly, touch, compact UI | pending |
-| 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers; matrix + reviewer pass pending |
+| 11 | Verification loop, budgets, fixes | `scripts/check-budgets.mjs` done and passing on all tiers (incl. wet and dust worst cases); matrix + reviewer pass pending |
 | 12 | README, final push | pending |
 
 ## DECISION NEEDED (owner): OSM has no buildings for most of the Walled City's bazaar blocks
@@ -61,6 +61,19 @@ Per the project rules nothing is invented or "filled in". Options (none has been
 - Landmarks: `src/world/landmarks/index.js` (`planLandmarks` -> pure plan + exclusion, `Landmarks` -> meshes). Models: hawaMahal.js, jantarMantar.js (`buildJantarMantarFromSite` uses the real OSM ring and instruments), jalMahal.js (parametrised to the mapped 59 x 55 m body), cityPalace.js (Chandra Mahal, Mubarak Mahal, generic gatehouse).
 - **Renderer lab**: `npm run build:lab` builds `dist-lab/` with `VITE_LAB=1` (synthetic district from `tests/fixtures/`, labelled on screen, never in the production bundle). Verified: `grep -l "Test Bazaar" dist/assets/*` prints nothing.
 
+## Phase 6 notes (weather)
+
+- **Rain** (`src/weather/rain.js`): GPU-instanced thin streaks in a camera-centred, world-locked wrapped volume; depth-tested (buildings occlude it), 1-1.5 px wide, coloured by the sky in their direction plus a forward-scatter term toward the sun/moon (so they show where backlit, not as white lines);
+  the drop set thins with intensity; wind slants them; splash rings near the camera. Counts per tier: 9000 / 5000 / 1800.
+- **Wet streets** (`src/render/reflection.js` + road material): a planar reflection of the near scene at the ground under the camera (mirrored camera, global clip plane so the sky pass is unaffected, previous frame's shadow maps reused, half-float target at 0.5 / 0.35 of frame size),
+  sampled by the road shader with roughness-driven blur, fresnel and raindrop-ring distortion; puddles are the strongest mirrors. Runs only while the ground is wet and the camera is within `reflectionMaxHeight` (200 m high / 70 m medium) and fades out toward that height; low tier uses the sky cube only.
+- **Lightning** (`src/weather/lightning.js`): fractal cloud-to-ground bolt (main channel + branches, deterministic per strike) as pixel-width ribbons, HDR so bloom glows, a multi-stroke flash envelope in `Weather` (strokes at 0 / 0.07 / 0.17 / 0.31 s + afterglow), and a real cold directional light so the street lights up. Bug found on the way: the ribbon quads were back-face culled (winding follows the segment direction) - both ribbon materials are double sided now.
+- **Dust storm** (`src/weather/dust.js` + post grade): wind-driven dust sprites in a wrapped volume plus an ochre post grade scaled by dust x storm; with the existing fog model the loo reads as a dim ochre wall of dust.
+- **Mist**: extinction band hugging the ridge flanks (40-190 m above the city datum) plus a faint ground layer, so the plain stays readable. **Cloud shadows**: the existing light-loop term is visible on the ground (subtle).
+- Sky: cloud march now 36 / 18 / 8 steps (high / medium / flat) with per-frame white-noise jitter; star field culled to a bright-city magnitude limit; fair-weather clouds fade at night.
+- Budgets: the gate now includes rainy and dusty worst cases; **medium triangle budget raised 2.8 M -> 3.2 M** because the reflection pass measured +0.64 M at street level (tiles are drawn whole; finer tile splitting is the fix if real medium-GPU frame times need it).
+- `scripts/weather-shots.mjs` renders the same views under every preset.
+
 ## Task A verdict (real Walled City vs real photos, critical)
 
 Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts/task-a-shots.mjs`).
@@ -83,10 +96,11 @@ Screenshots: `shots-tmp/taskA/*.png` (git-ignored; regenerate with `node scripts
 - Budget headroom: the **low tier is at 0.99 M of its 1.00 M triangle budget** (`npm run check:budgets`); any new geometry needs a cheaper far-LOD for that tier first. Medium is at 2.46 M / 2.80 M.
 - WebGPU is not used (WebGL2 only). Frame-rate numbers have not been measured yet.
 
+- Weather: rain has no audio yet (Phase 9); planar reflection only mirrors roads (terrain plazas just darken); lightning illumination is one directional light; moving dust sprites are subtle next to the fog; cloud edges are still grainy at the low/medium step counts; rain does not stop under roofs.
+
 ## Resume checklist
 
 1. Owner decision on the building-coverage options above.
-2. Phase 6 weather rendering (rain streaks, wet-street planar reflection, lightning, dust) - state model in `src/weather/weather.js`, `uWet` hooks and cloud shadows exist.
-3. Phase 7 traffic/people worker (IDM) on `public/data/osm/graph.json`, birds, cows.
+2. Phase 7 traffic/people worker (IDM) on `public/data/osm/graph.json`, birds, cows.
 4. Phase 8 festival / night / kite modes. 5. Phase 9 procedural audio. 6. Phase 10 cinematic tour + free-fly + touch + compact UI.
 7. Phase 11: fixed-seed screenshot matrix + reviewer pass + real-GPU fps measurements. 8. Phase 12 README.

@@ -21,6 +21,8 @@ export const TIERS = {
       cloudShadows: true,
       reflections: 'planar', // wet-street planar reflection
       reflectionScale: 0.5,
+      reflectionFar: 650, // m: only the near scene is re-rendered into the planar reflection
+      reflectionMaxHeight: 200, // m above ground: higher up the reflection pass is skipped (it fades out over the last 40 %)
       bloom: true,
       terrainRings: 8,
       terrainGrid: 96,
@@ -56,6 +58,8 @@ export const TIERS = {
       cloudShadows: true,
       reflections: 'planar',
       reflectionScale: 0.35,
+      reflectionFar: 220,
+      reflectionMaxHeight: 70,
       bloom: true,
       terrainRings: 7,
       terrainGrid: 64,
@@ -76,7 +80,9 @@ export const TIERS = {
       starCount: 1800,
       starCut: 1,
     },
-    budget: { drawCalls: 480, triangles: 2_800_000, textureMB: 192, geometries: 300, instances: 15_000 },
+    // triangles raised 2.8M -> 3.2M on 2026-09-29: the wet-street planar reflection (a second, near-only scene pass) measured +0.64M at street level
+    // (each 500 m tile is drawn whole even when only a corner is in view); finer tile splitting is the known fix if real medium-GPU frame times need it
+    budget: { drawCalls: 480, triangles: 3_200_000, textureMB: 192, geometries: 300, instances: 15_000 },
   },
   low: {
     label: 'Low (phone)',
@@ -91,6 +97,8 @@ export const TIERS = {
       cloudShadows: false,
       reflections: 'env', // sky-cube only, no extra scene pass
       reflectionScale: 0,
+      reflectionFar: 0,
+      reflectionMaxHeight: 0,
       bloom: false,
       terrainRings: 6,
       terrainGrid: 40,

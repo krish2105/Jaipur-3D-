@@ -23,8 +23,8 @@ export const WEATHER_PRESETS = {
   monsoon: {
     label: 'Monsoon',
     cloudCover: 0.97, cloudDensity: 1.9, cloudBase: 900, cloudThick: 2600, cirrus: 0, overcast: 0.9,
-    rain: 0.9, dust: 0.04, storm: 0.35, mist: 0.85, windSpeed: 9, windDir: 4.0,
-    mieScale: 20, fogGain: 2.8, fogFalloff: 1 / 900, dustTint: [1, 1, 1], lightningRate: 0.1,
+    rain: 0.9, dust: 0.04, storm: 0.35, mist: 0.6, windSpeed: 9, windDir: 4.0,
+    mieScale: 20, fogGain: 2.0, fogFalloff: 1 / 900, dustTint: [1, 1, 1], lightningRate: 0.1,
   },
 };
 
@@ -37,8 +37,10 @@ export class Weather {
     this.s = { ...WEATHER_PRESETS[preset], dustTint: [...WEATHER_PRESETS[preset].dustTint], wetness: 0, puddles: 0 };
     this.tau = 12; // seconds (real) time-constant for blending
     this.windOffset = [0, 0]; // accumulated cloud advection (m)
-    this.flash = 0; // lightning flash intensity 0..1
+    this.flash = 0; // lightning flash intensity 0..1 (multi-stroke envelope)
     this._flashT = 0;
+    this._boltAge = 99;   // seconds since the newest strike
+    this._boltId = 0;
     this._nextBolt = 8;
     this._rand = 1;
     this.bolts = []; // {t, dist, bearing} for audio + render
@@ -73,7 +75,13 @@ export class Weather {
     this.windOffset[1] += Math.cos(s.windDir) * sp * dt;
     // lightning: Poisson-ish bolts while it is stormy
     this._flashT += dt;
-    this.flash *= Math.exp(-dt / 0.12);
+    // a real flash is several return strokes within ~0.4 s: pulses at 0, 0.07, 0.17, 0.31 s decaying quickly, with a dim afterglow
+    this._boltAge += dt;
+    const ba = this._boltAge;
+    let f = 0;
+    for (const [t0, a] of [[0, 1], [0.07, 0.55], [0.17, 0.85], [0.31, 0.4]]) if (ba >= t0) f += a * Math.exp(-(ba - t0) / 0.035);
+    f += 0.35 * Math.exp(-ba / 0.22);
+    this.flash = Math.min(1, f);
     if (s.lightningRate > 0.005 && s.rain > 0.3) {
       this._nextBolt -= dt;
       if (this._nextBolt <= 0) {
@@ -87,8 +95,9 @@ export class Weather {
   }
 
   _strike(r) {
+    this._boltAge = 0;
     this.flash = 1;
-    this.bolts.push({ t: this._flashT, dist: 800 + r * 6000, bearing: r * Math.PI * 2 });
+    this.bolts.push({ id: ++this._boltId, t: this._flashT, dist: 800 + r * 6000, bearing: r * Math.PI * 2 });
   }
 
   /** debug/verification: fire a bolt now */

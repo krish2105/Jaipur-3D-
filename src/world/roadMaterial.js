@@ -15,8 +15,27 @@ varying vec4 vRa;
 varying vec2 vRuv;
 varying vec3 vRwp;
 uniform sampler2D uReflTex;
-uniform vec4 uRefl; // x enabled, y strength, z 1/width, w 1/height
-struct RS { vec3 alb; float rough; vec2 bump; };
+uniform mat4 uReflMat;
+uniform vec4 uRefl; // x enabled (0..1, ~wetness), y strength, z 1/width, w 1/height
+struct RS { vec3 alb; float rough; vec2 bump; float refl; };
+
+// expanding raindrop rings on wet asphalt: two staggered cell layers, returns a horizontal normal offset
+vec2 rainRipples(vec2 p, float t, float rain){
+  vec2 sum = vec2(0.0);
+  for (int k = 0; k < 2; k++){
+    vec2 q = p * (1.7 + 0.9 * float(k)) + float(k) * 17.3;
+    vec2 id = floor(q), f = fract(q) - 0.5;
+    float h = hash12(id);
+    float ph = fract(t * (0.85 + 0.5 * h) + h * 7.0);
+    vec2 c = (hash22(id + 3.1) - 0.5) * 0.55;
+    vec2 dv = f - c;
+    float d = length(dv);
+    float r = ph * 0.5;
+    float ring = sin((d - r) * 46.0) * smoothstep(0.09, 0.0, abs(d - r)) * (1.0 - ph) * (1.0 - ph) * step(h, rain);
+    sum += (dv / max(d, 1e-3)) * ring;
+  }
+  return sum;
+}
 RS gRS;
 
 void roadShade(vec2 uvr, float cls, float wN, float dist){
@@ -67,6 +86,10 @@ void roadShade(vec2 uvr, float cls, float wN, float dist){
   rough = mix(rough, 0.03, pud);
   col = mix(col, col * 0.7, pud);
   bump = (vec2(n3, vnoise(wp * 7.0 + 21.0)) - 0.5) * 0.25 * detail * (1.0 - pud);
+  // raindrop rings on wet ground, strongest in puddles
+  float wetK = smoothstep(0.05, 0.6, wet);
+  bump += rainRipples(wp, uFxT, uWet.y) * 0.32 * detail * wetK * (0.35 + 0.65 * pud);
+  gRS.refl = wetK * (0.3 + 0.7 * pud);
   gRS.alb = col;
   gRS.rough = rough;
   gRS.bump = bump;
@@ -81,7 +104,7 @@ export function createRoadMaterial() {
   mat.polygonOffset = true;
   mat.polygonOffsetFactor = -12;
   mat.polygonOffsetUnits = -12;
-  const extra = { uReflTex: { value: null }, uRefl: { value: new THREE.Vector4(0, 0, 1, 1) } };
+  const extra = { uReflTex: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uRefl: { value: new THREE.Vector4(0, 1.0, 1, 1) } };
   mat.userData.extra = extra;
   mat.onBeforeCompile = (shader) => {
     addEnvUniforms(shader);
@@ -93,6 +116,24 @@ export function createRoadMaterial() {
       .replace('void main() {', FRAG_HEAD + 'void main() {')
       .replace('#include <color_fragment>', 'roadShade(vRuv, floor(vRa.x * 16.0 + 0.5), vRa.y, length(vViewPosition));\n diffuseColor.rgb = gRS.alb;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = gRS.rough;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        if (uRefl.x > 0.001 && gRS.refl > 0.001) {
+          vec4 rc = uReflMat * vec4(vRwp, 1.0);
+          vec2 ruv = rc.xy / rc.w + gRS.bump * 0.035;
+          float blur = mix(0.010, 0.0018, smoothstep(0.03, 0.5, 1.0 - gRS.rough));
+          vec3 acc = vec3(0.0);
+          for (int i = 0; i < 6; i++) {
+            float a = 6.2831853 * (float(i) + 0.37) / 6.0;
+            acc += texture2D(uReflTex, ruv + vec2(cos(a), sin(a)) * blur).rgb;
+          }
+          acc = (acc + texture2D(uReflTex, ruv).rgb * 2.0) / 8.0;
+          vec3 V = normalize(cameraPosition - vRwp);
+          float fres = 0.025 + 0.975 * pow(1.0 - clamp(V.y, 0.0, 1.0), 5.0);
+          totalEmissiveRadiance += acc * fres * uRefl.y * uRefl.x * gRS.refl;
+        }`,
+      )
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>

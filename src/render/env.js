@@ -29,6 +29,7 @@ export const ENV = {
   uCloudOffset: { value: new THREE.Vector2(0, 0) },
   uCloudFx: { value: V4(0.6, 0, 0, 0) },
   uWet: { value: V4(0, 0, 0, 0) }, // x wetness, y rain intensity, z puddles, w lightning flash
+  uFxT: { value: 0 }, // real-time seconds (not the simulation clock): ripples, rain, anything that must not speed up with the sim
   uNight: { value: 0 }, // 0 day .. 1 full night (window glow, lamps)
   uFestival: { value: 0 }, // 0..1 festival lighting strength
   uLightGrid: { value: null },
@@ -56,6 +57,7 @@ uniform vec4 uFog2;
 uniform vec2 uWindV;
 uniform vec4 uWet;
 uniform float uNight;
+uniform float uFxT;
 uniform float uFestival;
 uniform sampler2D uLightGrid;
 uniform vec4 uLightGridP;
@@ -106,8 +108,10 @@ const FOG_FRAGMENT = /* glsl */ `
       }
       fopt *= acc * 0.3333;
     }
-    // Aravalli mist: extra low-lying extinction near the hills (below ~140 m over ground, softened by height)
-    fopt += uFog2.z * 2.2e-4 * fDist * exp(-max(fy1, 0.0) / 140.0);
+    // Aravalli mist: extra extinction concentrated on the hills
+    // (a band that hugs the ridge flanks, ~40-190 m above the city datum, plus a faint ground layer; the plain and the city stay readable)
+    float mistBand = exp(-pow((fy1 - 110.0) / 75.0, 2.0)) + 0.12 * exp(-max(fy1, 0.0) / 50.0);
+    fopt += uFog2.z * 2.6e-4 * fDist * mistBand;
     float fTr = exp(-fopt);
     vec3 fSky = envSkyAt(normalize(vec3(fDir.x, max(fDir.y, 0.0) * 0.5 + 0.005, fDir.z)));
     float fmu = dot(fDir, uSunDir);

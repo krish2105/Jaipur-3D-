@@ -18,6 +18,8 @@ import { City, NetworkSource, MemorySource } from './world/city.js';
 import { BUILDING_UNIFORMS } from './world/facadeMaterial.js';
 import { planLandmarks, Landmarks } from './world/landmarks/index.js';
 import { estimateTextureMB, countInstances } from './core/gpumem.js';
+import { WeatherFx } from './weather/fx.js';
+import { PlanarReflection } from './render/reflection.js';
 
 function shopOpenFraction(h) {
   // bazaars open ~9:30-21:30 and shut their shutters late; smooth ramps
@@ -95,6 +97,15 @@ export class App {
 
     progress('city');
     await this.initCity();
+
+    this.fx = new WeatherFx({ scene: this.scene, settings: s, hf: this.hf });
+    // wet-street planar reflection (high / medium tiers): the road material samples it
+    this.reflection = new PlanarReflection(this.renderer, s);
+    if (this.reflection.enabled) {
+      const ex = this.city.roadMat.userData.extra;
+      ex.uReflTex.value = this.reflection.rt.texture;
+      ex.uReflMat.value = this.reflection.textureMatrix;
+    }
 
     this.overlay = new PerfOverlay(this.perf, () => this.reportContext());
     if (this.q.has('perf')) this.overlay.toggle(true);
@@ -209,6 +220,7 @@ export class App {
     this.renderer.setSize(w, h, false);
     const bw = Math.round(w * this.pixelRatio), bh = Math.round(h * this.pixelRatio);
     this.post.setSize(bw, bh);
+    this.reflection?.setSize(bw, bh);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.lighting?.updateFrustums();
@@ -256,6 +268,7 @@ export class App {
     this.sky.update(this.env, this.weather.s, dt, { windOffset: this.weather.windOffset, time: this.clock.elapsed, flash, camera: cam });
     ENV.uFog.value.x *= this.debug.fogScale;
     this.updateWetUniforms();
+    this.fx.frame(dt, this);
     this.lighting.update(this.env, dt);
     this.terrain.update(cam);
     this.updateVeg();
@@ -270,6 +283,24 @@ export class App {
     cam.updateMatrixWorld();
 
     const r = this.renderer;
+    // planar reflection first (only while the ground is wet and the camera is near the ground)
+    const refl = this.reflection;
+    if (refl && refl.enabled) {
+      const wet = this.weather.s.wetness, gy = this.hf.heightAt(cam.position.x, cam.position.z);
+      const ex = this.city.roadMat.userData.extra, rex = ex.uRefl.value;
+      // shadow maps must exist before a second render pass (their samplers would bind an empty non-depth texture), and the road material
+      // must not sample the reflection target while roads are drawn into it (framebuffer feedback loop): give it a dummy for the pass
+      const shadowsReady = !this.lighting.csm || this.lighting.csm.lights.every((l) => l.shadow.map);
+      let done = false;
+      const hAbove = cam.position.y - gy, maxH = this.settings.reflectionMaxHeight || 200;
+      if (wet > 0.03 && shadowsReady && hAbove < maxH) {
+        if (!this._dummyTex) { this._dummyTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); this._dummyTex.needsUpdate = true; }
+        ex.uReflTex.value = this._dummyTex;
+        done = refl.render(this.scene, cam, gy + 0.05, [this.fx.rain.group]);
+        ex.uReflTex.value = refl.rt.texture;
+      }
+      if (done) { rex.x = Math.min(1, wet * 1.15); rex.y = 1.0 - Math.min(1, Math.max(0, (hAbove - 0.6 * maxH) / (0.4 * maxH))); } else rex.x = 0;
+    }
     r.setRenderTarget(this.post.target);
     r.clear();
     r.render(this.scene, cam);
@@ -281,6 +312,7 @@ export class App {
       time: this.clock.elapsed,
       flash,
       vignette: 0.24,
+      dust: Math.min(1, this.weather.s.dust * (0.1 + 0.9 * this.weather.s.storm)) * 0.9,
       grade: [1.0 + 0.04 * (1 - e.night), 1, Math.max(0, 1 - Math.abs(e.sunAlt - 4) / 25)],
     });
     r.info.reset();

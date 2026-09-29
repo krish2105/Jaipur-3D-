@@ -162,7 +162,7 @@ vec4 cloudMarch(vec3 ro, vec3 rd){
       float lightMS = exp(-lo * SIGMA * 260.0 * 0.22);
       float powder = 1.0 - 0.5 * exp(-d * 6.0);
       vec3 S = uCloudSun * (lightT * ph * 3.2 * powder + 0.30 * lightMS * (0.55 + 0.45 * hf)) + uCloudAmb * (0.55 + 0.45 * hf) * (0.6 + 0.4 * lightMS);
-      S += vec3(0.75, 0.82, 1.0) * uFlash * 6.0 * (0.4 + 0.6 * d);
+      S += vec3(0.75, 0.82, 1.0) * uFlash * 0.9 * (0.4 + 0.6 * d);
       float a = exp(-od);
       L += T * (1.0 - a) * S;
       T *= a;
@@ -367,7 +367,7 @@ export class SkySystem {
 
   _skyMaterial(env) {
     const cloudMode = this.settings.cloudMode || 'layered';
-    const steps = env ? 4 : { volumetric: 20, layered: 12, flat: 6 }[cloudMode];
+    const steps = env ? 4 : { volumetric: 36, layered: 18, flat: 8 }[cloudMode];
     const lightSteps = env ? 1 : { volumetric: 3, layered: 2, flat: 1 }[cloudMode];
     const detail = !env && cloudMode !== 'flat';
     const m = new THREE.ShaderMaterial({
