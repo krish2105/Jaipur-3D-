@@ -18,6 +18,7 @@ uniform vec2 uViewport;
 uniform float uRadius;
 uniform float uOn;
 uniform float uGain;
+uniform float uHeritage; // 0..1: roofline strips glow warm white every night, festival or not
 uniform float uFxT;
 uniform vec4 uFog;
 varying vec3 vCol;
@@ -43,8 +44,11 @@ void main(){
                         : 0.70 + 0.30 * sin(uFxT * 8.7 + aMisc.x * 90.0) * sin(uFxT * 3.3 + aMisc.x * 31.0);
   // sprites shrink to a sub-pixel dot when far: keep their energy (a dot of fixed brightness) by not letting the quad exceed pixel size
   float energy = clamp(core * 2.7 / r, 0.0, 1.0);
-  vA = uOn * fade * tw * (0.35 + 0.65 * energy) * exp(-uFog.x * 2.0 * d);
-  vCol = aCol * uGain;
+  bool roof = kind > 0.5 && kind < 1.5;
+  float on = roof ? max(uOn, uHeritage) : uOn;
+  vA = on * fade * tw * (0.35 + 0.65 * energy) * exp(-uFog.x * 2.0 * d);
+  // heritage strip lights are warm white; they take their festival colours as the festival fades in
+  vCol = (roof ? mix(vec3(1.0, 0.74, 0.40), aCol, clamp(uOn, 0.0, 1.0)) : aCol) * uGain;
   vSoft = kind > 2.5 ? 1.0 : 0.0;
   vUv = position.xy;
 }
@@ -88,7 +92,7 @@ export class GlowPoints {
     g.setAttribute('aMisc', this.aMisc);
     g.instanceCount = 0;
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
-    this.uniforms = { ...ENV, uViewport: { value: new THREE.Vector2(1, 1) }, uRadius: { value: o.radius }, uOn: { value: 0 }, uGain: { value: o.gain ?? 5.5 } };
+    this.uniforms = { ...ENV, uViewport: { value: new THREE.Vector2(1, 1) }, uRadius: { value: o.radius }, uOn: { value: 0 }, uHeritage: { value: 0 }, uGain: { value: o.gain ?? 5.5 } };
     this.mat = new THREE.ShaderMaterial({ vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG, uniforms: this.uniforms, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
     this.mat.userData.programKey = 'festival-glow';
     this.mesh = new THREE.Mesh(g, this.mat);
@@ -129,10 +133,11 @@ export class GlowPoints {
   }
 
   /** per frame: strength 0..1 (festival x night), viewport in pixels */
-  setState(on, vw, vh) {
+  setState(on, vw, vh, heritage = 0) {
     this.uniforms.uOn.value = on;
+    this.uniforms.uHeritage.value = heritage;
     this.uniforms.uViewport.value.set(vw, vh);
-    this.mesh.visible = on > 0.01 && this.count > 0;
+    this.mesh.visible = (on > 0.01 || heritage > 0.01) && this.count > 0;
   }
 
   dispose() { this.mesh.geometry.dispose(); this.mat.dispose(); }
@@ -198,7 +203,7 @@ export class LampLayer {
   /** night factor 0..1 controls the head glow (HDR: bloom picks it up) */
   setNight(k) {
     const g = 0.5 + k * 11;
-    this.headMat.color.setRGB(g, g * 0.68, g * 0.36);
+    this.headMat.color.setRGB(g, g * 0.92, g * 0.76);
     this.group.visible = this.count > 0;
   }
 }

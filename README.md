@@ -80,7 +80,7 @@ Terrarium tiles ─bake:terrain─▶ public/data/terrain/   (16-bit heights, ne
 | Tier | Target | Draw calls | Triangles | Texture MB | Geometries | Instances | Worst measured |
 |---|---|---|---|---|---|---|---|
 | High | 60 fps | 700 | 5.5 M | 320 | 400 | 30,000 | 304 / 4.87 M / 216 / 339 / 24,193 |
-| Medium | 60 fps | 480 | 3.2 M | 192 | 300 | 15,000 | 214 / 3.12 M / 144 / 233 / 14,447 |
+| Medium | 60 fps | 480 | 3.2 M | 192 | 300 | 15,000 | 214 / 3.13 M / 144 / 233 / 14,447 |
 | Low (phones) | steady 30 fps | 260 | 1.0 M | 96 | 220 | 6,000 | 110 / 0.99 M / 34 / 135 / 5,549 |
 
 Detection picks the tier from the GPU string, device class and memory; `?tier=` and the Quality panel override it. Dynamic resolution holds the frame-time target (a capped 30 fps phone probes back up after holding the cap), MSAA follows the pixel ratio (4x, 2x, or FXAA above about 1.9x).
@@ -114,10 +114,10 @@ Detection picks the tier from the GPU string, device class and memory; `?tier=` 
 
 ## Limitations and what was not verified
 
-- **Not photographic.** An independent reviewer scored the screenshots at roughly 20-25 % of the way to photographs: strong sky, weather and festival lighting; weak architecture (blocky, repeated facades), simple people / animals / vehicles, sparse street life and clutter, smooth hills.
+- **Not photographic.** An independent reviewer scored the screenshots at roughly 20-25 % of the way to photographs, and a second, photo-based review (16 real CC-licensed photographs of Jaipur, credits in [docs/REFERENCE_PHOTOS.md](docs/REFERENCE_PHOTOS.md)) scored Hawa Mahal, bazaar streets, night lighting, colour, Jal Mahal and Jantar Mantar 2 / 5, Amer and street life 1 / 5: strong sky, weather and festival lighting; weak architecture (blocky, repeated facades, none of the carved detail), simple people / animals / vehicles, sparse street life and clutter, smooth hills. The photo review's cheap fixes (terracotta hue, white LED lamps, darker night sky, warm strip lights on the parapets, Hawa Mahal tier profile) are in; the rest is listed in [PROGRESS.md](PROGRESS.md).
 - **OSM has almost no buildings along many bazaar streets** (Johari Bazaar included): the renderer shows what OSM contains, so those streets look empty and only 42 festival strings could be anchored on two mapped facades. Options (another real footprint source such as Overture Maps) are in [PROGRESS.md](PROGRESS.md); nothing is invented.
 - Hawa Mahal is a stylised pyramid of five storeys with 953 windows (the count is a documented figure), not a photographic facade; forts are simple masses on smooth SRTM hills; no building collision (only terrain) in free-fly.
-- Not verified: performance on phones or mid-range GPUs (only headroom on the M4 Pro and a 6x CPU throttle), the sound on real speakers by a person (the audio checks are measurements), the images against real photographs (the reviewer worked from documented facts and its own knowledge, not downloaded photos), and any browser other than Chrome.
+- Not verified: performance on phones or mid-range GPUs (only headroom on the M4 Pro and a 6x CPU throttle), the sound on real speakers by a person (the audio checks are measurements), any scene that has no photographic reference (kites, a Diwali market, a monsoon street: none could be found), colours (read off the photographs by eye, not sampled), and any browser other than Chrome.
 - WebGPU is not used (WebGL2 only). Sound needs a user gesture (browser rule); the synthesised call to prayer was deliberately not made.
 
 ## Credits

@@ -20,7 +20,8 @@ import FestivalWorker from './festivalWorker.js?worker';
 
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export const FESTIVAL_MODES = ['off', 'diwali', 'sankranti'];
-const LAMP_COL = [1.0, 0.72, 0.42];
+const HERITAGE_COL = [1.0, 0.74, 0.40]; // warm-white strip lights along the parapets of the arcaded bazaar buildings (seen in the night reference photo of Hawa Mahal Road)
+const LAMP_COL = [1.0, 0.88, 0.68]; // white LED (the reference photos show white / very light warm lamps, not orange sodium)
 // light-grid gains are irradiance in directional-light units (full moon 0.62); night exposure is 7.6-9.8x, so a lit street sits around 0.5-1.5
 const KIND_GAIN = [0.55, 0.5, 0.4]; // per source kind: string spans, roofline runs, diya runs
 
@@ -41,6 +42,7 @@ export class Festival {
     this.lampK = 0;           // street lamps 0..1
     this.landK = 0;           // floodlit landmarks 0..1
     this.fl = 0;              // festival bulbs on (strength x after-dark)
+    this.heritage = 0;        // roofline strip lights on the mapped facades of the decorated bazaars: every night, festival or not
     this.layout = null;
     this.routes = {};
     this.error = null;
@@ -120,7 +122,7 @@ export class Festival {
       const ls = new Float32Array((m.lamps.length / 3) * 8);
       for (let i = 0, n = m.lamps.length / 3; i < n; i++) {
         const x = m.lamps[i * 3], z = m.lamps[i * 3 + 1];
-        ls.set([x, hf.heightAt(x, z) + LAMP_HEIGHT, z, 1.0, 0.66, 0.34, (i * 0.618) % 1, 4], i * 8);
+        ls.set([x, hf.heightAt(x, z) + LAMP_HEIGHT, z, 1.0, 0.86, 0.62, (i * 0.618) % 1, 4], i * 8);
       }
       this.farLamps.setData(ls);
     }
@@ -204,7 +206,8 @@ export class Festival {
       this.lampLayer.gather(cx, cz);
       this.wires.gather(cx, cz);
     }
-    this.glow.setState(this.fl, vw, vh);
+    this.heritage = this.layout ? this.lampK * 0.85 : 0;
+    this.glow.setState(this.fl, vw, vh, this.heritage);
     if (this.farFest) {
       if (this.layout) { this.farFest.gather(cx, cz); this.farLamps.gather(cx, cz); }
       this.farFest.setState(this.fl, vw, vh);
@@ -234,12 +237,12 @@ export class Festival {
     const g = this.grid, cam = this._cam;
     if (!cam) return;
     const fw = this.fireworks;
-    const want = this.lampK > 0.02 || this.fl > 0.02 || this.landK > 0.02 || fw.bursts.length > 0;
+    const want = this.lampK > 0.02 || this.fl > 0.02 || this.heritage > 0.02 || this.landK > 0.02 || fw.bursts.length > 0;
     if (!want) { if (g.enabled) g.disable(); this._gridKey = ''; return; }
     let dirty = false;
     if (g.needsRecentre(cam.x, cam.z)) { g.recentre(cam.x, cam.z); dirty = true; }
     this._gridAge += dt;
-    const key = `${Math.round(this.lampK * 30)}|${Math.round(this.fl * 30)}|${Math.round(this.landK * 30)}|${this.layout ? 1 : 0}`;
+    const key = `${Math.round(this.lampK * 30)}|${Math.round(this.fl * 30)}|${Math.round(this.heritage * 30)}|${Math.round(this.landK * 30)}|${this.layout ? 1 : 0}`;
     if (key !== this._gridKey) { this._gridKey = key; dirty = true; }
     if (fw.bursts.length && this._gridAge > 0.05) dirty = true;
     if (!dirty && g.enabled) return;
@@ -251,12 +254,18 @@ export class Festival {
       bins.within(g.cx, g.cz, half, tmp);
       for (let i = 0; i < tmp.length; i++) { const o = tmp[i] * 3; g.splat(d[o], d[o + 1], LAMP_COL[0] * k, LAMP_COL[1] * k, LAMP_COL[2] * k, 14); }
     }
-    if (this.layout && this.fl > 0.02 && this.sourceBins) {
-      const d = this.layout.sources;
+    if (this.layout && (this.fl > 0.02 || this.heritage > 0.02) && this.sourceBins) {
+      const d = this.layout.sources, fm = Math.min(1, this.strength);
       this.sourceBins.within(g.cx, g.cz, half, tmp);
       for (let i = 0; i < tmp.length; i++) {
-        const o = tmp[i] * 7, gk = this.fl * KIND_GAIN[d[o + 6] | 0];
-        g.splat(d[o], d[o + 1], d[o + 2] * gk, d[o + 3] * gk, d[o + 4] * gk, d[o + 5]);
+        const o = tmp[i] * 7, kind = d[o + 6] | 0;
+        // roofline runs carry the heritage strip lighting every night (warm white); everything else is festival only
+        const on = kind === 1 ? Math.max(this.fl, this.heritage * 0.55) : this.fl;
+        if (on <= 0.01) continue;
+        const gk = on * KIND_GAIN[kind];
+        let r = d[o + 2], gg = d[o + 3], b = d[o + 4];
+        if (kind === 1 && fm < 1) { const mag = Math.max(r, gg, b), t = 1 - fm; r += (HERITAGE_COL[0] * mag - r) * t; gg += (HERITAGE_COL[1] * mag - gg) * t; b += (HERITAGE_COL[2] * mag - b) * t; }
+        g.splat(d[o], d[o + 1], r * gk, gg * gk, b * gk, d[o + 5]);
       }
     }
     if (this.landK > 0.02) {

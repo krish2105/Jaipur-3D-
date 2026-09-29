@@ -15,13 +15,15 @@ import { mulberry32 } from '../core/rng.js';
 /** decorated bazaars: the named markets on the OSM street graph. Theme 0 gold, 1 multicolour. */
 export const FESTIVAL_STREETS = [
   { re: /johari/i, theme: 0 },
+  { re: /hawa\s*(sadak|mahal)/i, theme: 0 },
   { re: /bapu\s*baz|nehru\s*baz/i, theme: 1 },
   { re: /tripolia/i, theme: 1 },
   { re: /chandpol|chandpole/i, theme: 1 },
   { re: /chaura\s*rasta/i, theme: 1 },
   { re: /ramganj|sanjay\s*baz|gangauri|kishanpol|sujrapol|ghat\s*darwaja|indira\s*baz/i, theme: 1 },
 ];
-const EXCLUDE = /elevated|flyover|sadak/i;
+// only the elevated road is excluded: "Hawa sadak" is the ground-level Hawa Mahal road (the earlier /sadak/ filter dropped it by mistake; found in the photo review)
+const EXCLUDE = /elevated|flyover/i;
 
 // linear emissive colours (multiplied by an HDR gain in the shader)
 export const PALETTE = {

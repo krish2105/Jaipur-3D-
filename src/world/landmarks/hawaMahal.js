@@ -11,7 +11,8 @@ export const HAWA_WINDOWS = 953;
 const FLOOR_H = 4.5;
 const PLINTH = 3.2;
 // facade width per storey (m): bottom -> top, pyramidal
-const WIDTH = [36, 34, 24, 16, 9];
+// approx, read by eye off a CC BY-SA photo (docs/REFERENCE_PHOTOS.md: hawa-east-2022): tiers are about 100 / 100 / 97 / 75 / 41 % of the base width
+const WIDTH = [36, 36, 35, 27, 15];
 const DEPTH = [12, 11, 3.6, 3.6, 3.6];
 // distribute the 953 windows in proportion to width (largest remainder), exactly 953
 export function windowCounts(total = HAWA_WINDOWS, widths = WIDTH) {
@@ -82,7 +83,7 @@ export function buildHawaMahal(heroMat, propMat) {
 
   // plinth: plain pink wall with three arched niches
   b.box(0, 0, -DEPTH[0] / 2, WIDTH[0] + 2, PLINTH, DEPTH[0], COL.pinkDeep);
-  b.arcade(-14, 0.05, 14, 0.05, 0.0, 5, 2.4, 2.7, COL.dark, true, COL.limewash);
+  b.arcade(-14, 0.05, 14, 0.05, 0.0, 5, 2.4, 2.7, [0.30, 0.095, 0.075], true, COL.limewash); // shallow niches: the real plinth is a closed decorated wall, not an open arcade
   b.box(0, PLINTH, -DEPTH[0] / 2, WIDTH[0] + 2.4, 0.35, DEPTH[0] + 0.4, COL.limewash);
 
   let y = PLINTH + 0.35;

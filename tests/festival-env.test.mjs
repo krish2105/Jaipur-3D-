@@ -68,6 +68,6 @@ test('Hawa Mahal festival outline: bulbs sit on the top edge of each of the five
   assert.equal(ys.length, 5, 'one string per storey: ' + ys);
   for (let i = 1; i < 5; i++) assert.ok(ys[i] - ys[i - 1] > 4 && ys[i] - ys[i - 1] < 5, 'storey spacing 4.5 m');
   const widthAt = (y) => Math.max(...bulbs.filter((p) => Math.abs(p[1] - y) < 0.01).map((p) => Math.abs(p[0]))) * 2;
-  assert.ok(widthAt(ys[0]) > 34 && widthAt(ys[0]) <= 36.1 && widthAt(ys[4]) > 7 && widthAt(ys[4]) <= 9.1, 'pyramidal: the strings narrow toward the top');
+  assert.ok(widthAt(ys[0]) > 34 && widthAt(ys[0]) <= 36.1 && widthAt(ys[4]) > 13 && widthAt(ys[4]) <= 15.1 && widthAt(ys[4]) < widthAt(ys[0]) * 0.5, 'the strings narrow toward the top (top tier about 40 % of the base)');
   assert.ok(diyas.length > 25 && diyas.every((p) => p[1] < 0.2 && Math.abs(p[0]) < 18), 'diyas at the base');
 });

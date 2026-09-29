@@ -87,9 +87,9 @@ vec3 envSkyAt(vec3 dir){
   float v = 0.5 + 0.5 * sign(e) * sqrt(abs(e) / (PI * 0.5));
   vec3 c = texture2D(uSkyLUT, vec2(clamp(phi / PI, 0.002, 0.998), clamp(v, 0.003, 0.997))).rgb;
   // faint night-sky glow (airglow / starlight / moon-scattered)
-  c += vec3(0.0035, 0.0055, 0.011) * uSkyAux.x;
+  c += vec3(0.0035, 0.0055, 0.011) * (0.42 * uSkyAux.x); // night airglow: reference night photos have a near-black sky
   // city light dome / horizon airglow: the horizon never goes pure black at night (warmer and brighter while the city is lit for a festival)
-  c += mix(vec3(0.014, 0.013, 0.016), vec3(0.030, 0.021, 0.014), uFestival) * uSkyAux.x * pow(1.0 - abs(dir.y), 6.0);
+  c += mix(vec3(0.010, 0.009, 0.011), vec3(0.026, 0.018, 0.012), uFestival) * uSkyAux.x * pow(1.0 - abs(dir.y), 6.0);
   return c;
 }
 #endif

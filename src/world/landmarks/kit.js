@@ -4,7 +4,7 @@ import { ShapeUtils } from 'three';
 import { addEnvUniforms, ENV_DECL } from '../../render/env.js';
 
 export const COL = {
-  pink: [0.50, 0.20, 0.15], pinkDeep: [0.40, 0.13, 0.11], pinkLight: [0.58, 0.30, 0.23],
+  pink: [0.53, 0.20, 0.12], pinkDeep: [0.42, 0.13, 0.085], pinkLight: [0.61, 0.31, 0.20],
   cream: [0.72, 0.60, 0.45], limewash: [0.80, 0.72, 0.60], sand: [0.55, 0.40, 0.28], ochre: [0.55, 0.37, 0.18],
   white: [0.72, 0.68, 0.60], marble: [0.78, 0.76, 0.70], dark: [0.028, 0.022, 0.02], stone: [0.36, 0.30, 0.25],
   red: [0.42, 0.13, 0.09], green: [0.07, 0.16, 0.06], water: [0.02, 0.04, 0.045], gold: [0.6, 0.45, 0.12],

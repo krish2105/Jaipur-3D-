@@ -135,6 +135,13 @@ Sources were opened through web search on 2026-09-29 (secondary / tourism pages:
 - **Street lamps**: OSM has **no** street-lamp nodes in the baked area (0 instances). Lamps are *generated* along OSM roads (spacing 28-50 m by road class, alternating sides): this is *approx*, not a survey. The README says so.
 - **Diwali is moonless** in the simulation: new moon 2026-11-09 07:02 UTC, i.e. the evening of Sunday 8 Nov 2026 has a ~1 % crescent below the horizon (`tests/festival-env.test.mjs`, `tests/astro.test.mjs`).
 
+## Corrections from the photo review (16 real photographs, docs/REFERENCE_PHOTOS.md)
+- **Hawa Mahal profile**: "pyramidal" is too strong. In `hawa-east-2022` the five tiers are about 100 / 100 / 97 / 75 / 41 % of the base width (read by eye) and each row carries about 9 large projecting oriel bays with ribbed cupolas; long two-storey jaali wings and towers flank it and the plinth is a closed decorated wall with shallow niches. The model now uses the tier profile above (*approx*); bays and wings are not modelled.
+- **Wall colour**: the sources say "terracotta pink"; the photographs show terracotta-orange with cream trim (not rose), and Johari Bazaar frontages mix salmon, peach and cream. The palette was moved toward orange; inside the Walled City it is still clamped to the pink end (*approx*).
+- **Jal Mahal**: the existing note says pink and red sandstone; `jal-mahal-2013` (golden hour) shows a pale buff / yellow body with slim octagonal corner pavilions, curved-roof pavilions and trees on the roof. Unresolved: golden-hour light warms everything, so a neutral-light photograph is needed before recolouring.
+- **Night**: street lamps on Hawa Mahal Road are white LED on twin-arm posts, and the arcaded buildings carry warm-white strip lights along the parapet and lit niches (`hawa-to-badi-chaupar-night`); the sky is near black.
+- **Tripolia gate**: one large cusped arch flanked by niches under a triple-jharokha tier (`tripolia-gate`); the model's gatehouse (two equal arches on a slab) is generic.
+
 ## Pink City colour (used by the facade palette)
 - Jaipur's old city is painted terracotta pink: the walls were painted pink to welcome the Prince of Wales (Albert Edward) in 1876 during Sawai Ram Singh II's reign, and an 1877 law requires the old city's buildings to keep the pink shade; the sources say it remains in force.
   Sources: en.wikipedia.org/wiki/Jaipur ; mentalfloss.com/article/542269/why-jaipurs-king-painted-his-city-pink-impress-prince-wales ; insightvacations.com/blog/story-jaipur-pink-city/ (secondary, qualitative; the exact shade is not specified: the model's salmon / rose range is *approx*).

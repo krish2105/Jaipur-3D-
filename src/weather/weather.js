@@ -6,7 +6,7 @@ export const WEATHER_PRESETS = {
     label: 'Clear & hot',
     cloudCover: 0.2, cloudDensity: 0.95, cloudBase: 1900, cloudThick: 1300, cirrus: 0.25, overcast: 0,
     rain: 0, dust: 0.12, storm: 0, mist: 0, windSpeed: 3.5, windDir: 0.9,
-    mieScale: 20, fogGain: 1.35, fogFalloff: 1 / 1200, dustTint: [1, 1, 1], lightningRate: 0,
+    mieScale: 15, fogGain: 1.1, fogFalloff: 1 / 1200, dustTint: [1, 1, 1], lightningRate: 0,
   },
   dust: {
     label: 'Dust haze',

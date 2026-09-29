@@ -44,7 +44,8 @@ test('planLamps: poles stand beside the road and their arms point at it', () => 
 test('streetTheme: named bazaars are decorated, elevated roads and unnamed streets are not', () => {
   assert.equal(streetTheme('Johari Bazar').theme, 0);
   assert.equal(streetTheme('Tripolia Bazaar').theme, 1);
-  assert.equal(streetTheme('Elevated Hawa Sadak'), null);
+  assert.equal(streetTheme('Elevated Hawa Sadak'), null, 'the flyover is not decorated');
+  assert.equal(streetTheme('Hawa sadak').theme, 0, 'the ground-level Hawa Mahal road is (it was excluded by a too-broad filter)');
   assert.equal(streetTheme(null), null);
   assert.equal(streetTheme('Mirza Ismail Road'), null);
 });

@@ -48,8 +48,9 @@ float sdArch(vec2 p, float w, float h, float pointed){
   return p.y > hs ? dTop : dRect;
 }
 vec3 wallPalette(float s, float s2){
-  vec3 salmon = vec3(0.52, 0.205, 0.155);
-  vec3 rose   = vec3(0.37, 0.115, 0.10);
+  // hue moved from rose toward terracotta after the photo comparison (real Walled City walls read orange-terracotta, about sRGB #C9714F sunlit)
+  vec3 salmon = vec3(0.56, 0.185, 0.10);
+  vec3 rose   = vec3(0.42, 0.125, 0.07);
   vec3 ochre  = vec3(0.50, 0.285, 0.135);
   vec3 lime   = vec3(0.62, 0.42, 0.33);
   vec3 cream  = vec3(0.66, 0.53, 0.38);
@@ -100,7 +101,7 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   float n1 = fbm2_3(vec2(u, v) * 0.33 + seedB * 40.0);
   float n2 = vnoise(vec2(u, v) * 2.9 + seedA * 20.0);
   float wear = smoothstep(0.36, 0.8, n1);
-  vec3 faded = mix(base, vec3(0.58, 0.38, 0.31), 0.55);
+  vec3 faded = mix(base, vec3(0.60, 0.40, 0.28), 0.55);
   vec3 col = mix(base, faded, wear * 0.65);
   float patchN = fbm2_3(vec2(u, v) * 0.85 + seedA * 13.0) + (1.0 - smoothstep(0.0, 2.2, v)) * 0.2;
   col = mix(col, vec3(0.24, 0.085, 0.055), smoothstep(0.66, 0.78, patchN) * 0.7 * detail);
