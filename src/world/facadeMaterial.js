@@ -6,6 +6,9 @@ import { addEnvUniforms, ENV_DECL } from '../render/env.js';
 export const BUILDING_UNIFORMS = {
   uShopOpen: { value: 1 },
   uBldTime: { value: 0 },
+  // Walled City box in world metres (x0, z0, x1, z1); zero = none. Inside it the wall palette is clamped to terracotta pink: a law of 1877 requires the
+  // old city's buildings to be painted pink (docs/LANDMARK_FACTS.md). Outside, and in the lab, the full palette (whites, ochres, limes) applies.
+  uWalled: { value: new THREE.Vector4(0, 0, 0, 0) },
 };
 
 const VERT_HEAD = /* glsl */ `
@@ -16,11 +19,14 @@ varying vec4 vFB;
 varying vec2 vFUV;
 varying vec3 vFN;
 varying vec3 vFP;
+varying vec2 vFW;
 `;
 
 const FRAG_HEAD = /* glsl */ `
 ${ENV_DECL}
 uniform float uShopOpen;
+uniform vec4 uWalled;
+varying vec2 vFW;
 varying vec4 vFA;
 varying vec4 vFB;
 varying vec2 vFUV;
@@ -55,6 +61,12 @@ vec3 wallPalette(float s, float s2){
   c = mix(c, grey, smoothstep(0.945, 0.965, s));
   return c;
 }
+// 1 inside the Walled City (soft 60 m edge), 0 outside: pulls the palette selector toward the pink end
+float walledK(){
+  if (uWalled.z <= uWalled.x) return 0.0;
+  vec2 d = min(vFW - uWalled.xy, uWalled.zw - vFW);
+  return smoothstep(0.0, 60.0, min(d.x, d.y));
+}
 vec3 signColor(float h){
   if (h < 0.16) return vec3(0.42, 0.30, 0.04);
   if (h < 0.32) return vec3(0.035, 0.08, 0.28);
@@ -83,7 +95,7 @@ void facadeWall(vec2 uvw, float L, float H, float seedA, float seedB, float cls,
   float detail = 1.0 - smoothstep(40.0, 170.0, dist);
 
   // ---- plaster
-  vec3 base = wallPalette(seedA, seedB);
+  vec3 base = wallPalette(seedA * (1.0 - 0.88 * walledK()), seedB);
   base *= 0.86 + 0.28 * hash12(vec2(seedA * 131.0 + floorIdx, floorIdx * 7.0 + seedB * 3.0));
   float n1 = fbm2_3(vec2(u, v) * 0.33 + seedB * 40.0);
   float n2 = vnoise(vec2(u, v) * 2.9 + seedA * 20.0);
@@ -247,7 +259,7 @@ void facadeRoof(vec2 xz, float seedA, float seedB, float cls, float kind, float 
 
 void facadeOther(vec2 uvw, vec2 xz, float seedA, float seedB, float cls, float kind, float w4, float dist){
   // parapet cap / inner face / clutter / cornice / pitched
-  vec3 base = wallPalette(seedA, seedB);
+  vec3 base = wallPalette(seedA * (1.0 - 0.88 * walledK()), seedB);
   float n = fbm2_3(xz * 0.8 + seedA * 20.0);
   vec3 col = base * (0.8 + 0.4 * n);
   float rough = 0.9;
@@ -277,7 +289,7 @@ export function createBuildingMaterial() {
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-        vFA = aA; vFB = aB; vFUV = uv; vFN = normal; vFP = position;`,
+        vFA = aA; vFB = aB; vFUV = uv; vFN = normal; vFP = position; vFW = (modelMatrix * vec4(position, 1.0)).xz;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', FRAG_HEAD + 'void main() {')

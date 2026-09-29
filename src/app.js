@@ -16,6 +16,7 @@ import { Terrain } from './world/terrain.js';
 import { fromIST } from './astro/astro.js';
 import { City, NetworkSource, MemorySource } from './world/city.js';
 import { BUILDING_UNIFORMS } from './world/facadeMaterial.js';
+import { project } from './core/geo.js';
 import { planLandmarks, Landmarks } from './world/landmarks/index.js';
 import { estimateTextureMB, countInstances } from './core/gpumem.js';
 import { WeatherFx } from './weather/fx.js';
@@ -131,7 +132,7 @@ export class App {
     // night / festival: street lamps, festival strings, lit landmarks, fireworks, kites (needs the baked OSM graph + footprints; skipped in the lab)
     if (!this.labMode && !this.off.has('festival')) {
       progress('festival');
-      this.festival = new Festival({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, landmarkItems: this.landmarkPlan ? this.landmarkPlan.items : [], base: import.meta.env.BASE_URL });
+      this.festival = new Festival({ scene: this.scene, settings: s, hf: this.hf, lighting: this.lighting, manifest: this.city.manifest, landmarkItems: this.landmarkPlan ? this.landmarkPlan.items : [], landmarks: this.landmarks, base: import.meta.env.BASE_URL });
     }
 
     // procedural audio: builds its graph on the first click / tap / key press (browser autoplay rules); M mutes
@@ -193,7 +194,7 @@ export class App {
     // lab district is synthetic and not Jaipur: no landmarks there
     this.city = new City({
       scene: this.scene, lighting: this.lighting, settings: this.settings, source, hf: this.hf,
-      onManifest: this.labMode ? null : (man) => { this.landmarkPlan = planLandmarks(man); return this.landmarkPlan.exclude; },
+      onManifest: this.labMode ? null : (man) => { this.setWalledCity(man); this.landmarkPlan = planLandmarks(man); return this.landmarkPlan.exclude; },
     });
     const ok = await this.city.init();
     await this.loadCover(this.city.manifest);
@@ -209,6 +210,14 @@ export class App {
       notice.textContent = 'RENDERER LAB: synthetic test geometry, not Jaipur.';
       notice.hidden = false;
     }
+  }
+
+  /** the Walled City box (approx: the brief's bounds, the boundary is not in OSM) drives the pink palette of the facade shader */
+  setWalledCity(man) {
+    const b = man && man.walledCity && man.walledCity.bbox; // [south, west, north, east]
+    if (!b) return;
+    const a = project(b[0], b[1]), c = project(b[2], b[3]);
+    BUILDING_UNIFORMS.uWalled.value.set(Math.min(a.x, c.x), Math.min(a.z, c.z), Math.max(a.x, c.x), Math.max(a.z, c.z));
   }
 
   /** OSM land cover raster (water, vegetation, parks, built-up land) for the terrain shader; absent data just leaves the terrain as is */

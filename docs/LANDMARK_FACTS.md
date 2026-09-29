@@ -134,3 +134,8 @@ Sources were opened through web search on 2026-09-29 (secondary / tourism pages:
   **Used for**: rooftop launch points (real OSM footprints), kite fighting (random cut strings), the winter preset. **Approx / not sourced**: kite size (~0.5-0.75 m), aerodynamic coefficients, string length (45-120 m), the 7 m/s wind (chosen so kites fly; not a climate record) and the exaggerated minimum on-screen size.
 - **Street lamps**: OSM has **no** street-lamp nodes in the baked area (0 instances). Lamps are *generated* along OSM roads (spacing 28-50 m by road class, alternating sides): this is *approx*, not a survey. The README says so.
 - **Diwali is moonless** in the simulation: new moon 2026-11-09 07:02 UTC, i.e. the evening of Sunday 8 Nov 2026 has a ~1 % crescent below the horizon (`tests/festival-env.test.mjs`, `tests/astro.test.mjs`).
+
+## Pink City colour (used by the facade palette)
+- Jaipur's old city is painted terracotta pink: the walls were painted pink to welcome the Prince of Wales (Albert Edward) in 1876 during Sawai Ram Singh II's reign, and an 1877 law requires the old city's buildings to keep the pink shade; the sources say it remains in force.
+  Sources: en.wikipedia.org/wiki/Jaipur ; mentalfloss.com/article/542269/why-jaipurs-king-painted-his-city-pink-impress-prince-wales ; insightvacations.com/blog/story-jaipur-pink-city/ (secondary, qualitative; the exact shade is not specified: the model's salmon / rose range is *approx*).
+- **Used for**: inside the Walled City box (`manifest.walledCity`, approx-brief bounds because OSM has no boundary object) the facade shader picks only the pink (salmon / rose) end of its palette; outside, buildings keep the mixed palette (whites, ochres, limes, greys).

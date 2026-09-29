@@ -41,9 +41,9 @@ varying vec2 vUv;
 void main(){
   vec4 origin = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
   float d = max(-origin.z, 0.5);
-  // a patang is ~0.5 m: keep it at least ~5 px wide so it stays visible from far (the only deliberate exaggeration)
+  // a patang is ~0.5 m: keep it at least ~7 px wide so it stays visible from far (the only deliberate exaggeration)
   float pxw = 2.0 * d / (projectionMatrix[1][1] * uViewport.y);
-  float sc = max(1.0, 5.0 * pxw / 0.46);
+  float sc = max(1.0, 7.0 * pxw / 0.46);
   vec3 lp = position * vec3(sc, sc, 1.0);
   vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(lp, 1.0);
   gl_Position = projectionMatrix * mvPosition;

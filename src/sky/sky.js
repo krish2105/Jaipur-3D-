@@ -192,16 +192,18 @@ vec3 starLayer(vec3 e, float cells, float prob, float size, float gain, float cu
 vec3 stars(vec3 dir){
   vec3 e = normalize(uStarRot * dir);
   float sz = uPixAngle * 0.8;
-  vec3 c = starLayer(e, 45.0, 0.07, sz * 1.3, 9.0, 0.42);
-  c += starLayer(e, 95.0, 0.10, sz, 5.0, 0.90);
-  c += starLayer(e, 190.0, 0.12, sz * 0.9, 2.6, 0.97);
+  // brightness kept moderate: at night exposure (6-10x) plus bloom a gain of 9 turned the brightest stars into big flat discs (screenshot review)
+  vec3 c = starLayer(e, 45.0, 0.07, sz * 1.15, 4.6, 0.42);
+  c += starLayer(e, 95.0, 0.10, sz, 3.0, 0.88);
+  c += starLayer(e, 190.0, 0.14, sz * 0.9, 2.0, 0.93);
   // Milky Way band: galactic pole (RA 192.86, Dec +27.13) in equatorial coordinates
   vec3 pole = vec3(cos(0.4735) * cos(3.3660), cos(0.4735) * sin(3.3660), sin(0.4735));
   float b = asin(clamp(dot(e, pole), -1.0, 1.0));
   float band = exp(-pow(b / 0.2, 2.0));
   float n = vnoise3(e * 5.0) * 0.6 + vnoise3(e * 13.0) * 0.4;
   float lane = smoothstep(0.55, 0.8, vnoise3(e * 9.0 + 4.0));
-  c += vec3(0.85, 0.86, 1.0) * band * n * (1.0 - 0.6 * lane) * 0.05;
+  // (the Milky Way is barely visible from a bright city; at 0.05 it read as a searchlight beam in the Diwali night review)
+  c += vec3(0.85, 0.86, 1.0) * band * n * (1.0 - 0.6 * lane) * 0.014;
   return c * uStarGain;
 }
 

@@ -14,6 +14,7 @@ import { KiteSim } from './kites.js';
 import { KiteRenderer } from './kiteRender.js';
 import { landmarkSources } from './landmarkLights.js';
 import { Bins } from './bins.js';
+import { hawaOutline } from '../world/landmarks/hawaMahal.js';
 import { LAMP_HEIGHT } from './layout.js';
 import FestivalWorker from './festivalWorker.js?worker';
 
@@ -57,6 +58,7 @@ export class Festival {
     this.scene.add(this.group);
     this.grid = new LightGrid({ n: s.lightGridN, size: s.lightGridSize, groundAt: (x, z) => o.hf.heightAt(x, z) });
     this.landSrc = landmarkSources(o.landmarkItems || []);
+    this.landmarks = o.landmarks || null;
     this.sourceBins = null;
     this.kites = null;
     this.kiteRender = null;
@@ -101,7 +103,7 @@ export class Festival {
   _apply(m) {
     this.layout = m;
     this.routes = m.routes || {};
-    this.glow.setData(m.bulbs);
+    this.glow.setData(this._withLandmarkBulbs(m.bulbs));
     this.lampLayer.setData(m.lamps);
     this.wires.setData(m.spans);
     this.sourceBins = new Bins(m.sources, 7, 0, 1, 64);
@@ -125,6 +127,22 @@ export class Festival {
     this.stats.layout = m.stats;
     this._gridKey = '';
     if (this.kitesOn && !this.kites) this._makeKites(this._cam || { x: 0, z: 0 });
+  }
+
+  /** festival outline lights on the modelled Hawa Mahal (bulbs along every storey's top edge, diyas on the plinth), transformed by the model's world matrix */
+  _withLandmarkBulbs(bulbs) {
+    const g = this.landmarks && this.landmarks.items && this.landmarks.items.hawaMahal;
+    if (!g) return bulbs;
+    g.updateMatrixWorld(true);
+    const { bulbs: b, diyas: d } = hawaOutline();
+    const out = new Float32Array(bulbs.length + (b.length + d.length) * 8);
+    out.set(bulbs);
+    let o = bulbs.length;
+    const v = new THREE.Vector3();
+    const put = (p, col, kind, k) => { v.set(p[0], p[1], p[2]).applyMatrix4(g.matrixWorld); out.set([v.x, v.y, v.z, col[0], col[1], col[2], (k * 0.618) % 1, kind], o); o += 8; };
+    b.forEach((p, i) => put(p, i % 3 ? [1.0, 0.66, 0.2] : [1.0, 0.8, 0.4], 1, i));
+    d.forEach((p, i) => put(p, [1.0, 0.5, 0.1], 2, i));
+    return out;
   }
 
   /** set the festival mode */
@@ -245,7 +263,7 @@ export class Festival {
       const d = this.landSrc, k = this.landK * (1 + 0.5 * this.strength) * 0.15;
       for (let o = 0; o < d.length; o += 7) if (Math.abs(d[o] - g.cx) < half + d[o + 5] && Math.abs(d[o + 1] - g.cz) < half + d[o + 5]) g.splat(d[o], d[o + 1], d[o + 2] * k, d[o + 3] * k, d[o + 4] * k, d[o + 5]);
     }
-    if (fw.bursts.length) for (const s of fw.lightSources(this._fwSrc)) g.splat(s.x, s.z, s.r * 0.35, s.g * 0.35, s.b * 0.35, s.R);
+    if (fw.bursts.length) for (const s of fw.lightSources(this._fwSrc)) g.splat(s.x, s.z, s.r * 0.9, s.g * 0.9, s.b * 0.9, s.R); // a burst visibly lights the streets for a moment
     g.upload();
     this._gridAge = 0;
     this.stats.gridMs = performance.now() - t0;

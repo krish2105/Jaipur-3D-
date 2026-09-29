@@ -4,6 +4,7 @@ import { EnvState, computeEnv } from '../src/sky/environment.js';
 import { WEATHER_PRESETS } from '../src/weather/weather.js';
 import { fromIST, PRESET_DATES, moonPosition, sunEvents } from '../src/astro/astro.js';
 import { landmarkSources } from '../src/festival/landmarkLights.js';
+import { hawaOutline } from '../src/world/landmarks/hawaMahal.js';
 
 const clear = { ...WEATHER_PRESETS.clear, wetness: 0, puddles: 0 };
 const envAt = (y, mo, d, h, w = clear) => { const e = new EnvState(); computeEnv(e, fromIST(y, mo, d, Math.floor(h), Math.round((h % 1) * 60)), w); return e; };
@@ -58,4 +59,15 @@ test('landmarkSources: every planned landmark kind gets floodlights near its mod
   const hawa = [];
   for (let o = 0; o < 5 * 7; o += 7) hawa.push([s[o], s[o + 1]]);
   assert.ok(hawa.every(([x]) => x > 36), 'in front of the east-facing facade');
+});
+
+test('Hawa Mahal festival outline: bulbs sit on the top edge of each of the five storeys, diyas on the plinth, inside the modelled widths', () => {
+  const { bulbs, diyas } = hawaOutline();
+  assert.ok(bulbs.length > 150 && bulbs.length < 260, 'bulbs ' + bulbs.length);
+  const ys = [...new Set(bulbs.map((p) => p[1].toFixed(2)))].map(Number).sort((a, b) => a - b);
+  assert.equal(ys.length, 5, 'one string per storey: ' + ys);
+  for (let i = 1; i < 5; i++) assert.ok(ys[i] - ys[i - 1] > 4 && ys[i] - ys[i - 1] < 5, 'storey spacing 4.5 m');
+  const widthAt = (y) => Math.max(...bulbs.filter((p) => Math.abs(p[1] - y) < 0.01).map((p) => Math.abs(p[0]))) * 2;
+  assert.ok(widthAt(ys[0]) > 34 && widthAt(ys[0]) <= 36.1 && widthAt(ys[4]) > 7 && widthAt(ys[4]) <= 9.1, 'pyramidal: the strings narrow toward the top');
+  assert.ok(diyas.length > 25 && diyas.every((p) => p[1] < 0.2 && Math.abs(p[0]) < 18), 'diyas at the base');
 });

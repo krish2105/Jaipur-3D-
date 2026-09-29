@@ -39,6 +39,9 @@ try {
   check(await p.evaluate(() => document.querySelectorAll('#dock .dk').length) === 7, 'the dock has 7 buttons (camera, time, weather, traffic, festival, sound, quality)');
   check((await p.evaluate(() => document.getElementById('hud-time').textContent)).includes('IST'), 'the time readout shows IST');
   check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal page overflow on desktop');
+  const credit = (page) => page.evaluate(() => { const el = document.getElementById('credit'), c = el.getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect(); return { top: c.top, bottom: c.bottom, dockBottom: d.bottom, ih: innerHeight, clipped: el.scrollWidth > el.clientWidth, text: [...el.querySelectorAll('span')].filter((s) => getComputedStyle(s).display !== 'none').map((s) => s.textContent).join(' ') }; });
+  const c1 = await credit(p);
+  check(c1.bottom <= c1.ih && c1.top >= c1.dockBottom - 1 && !c1.clipped && /OpenStreetMap contributors/.test(c1.text) && /Mapzen\/Tilezen/.test(c1.text), `the attribution line is visible under the dock, not clipped: "${c1.text.slice(0, 60)}..."`);
 
   // keyboard: forward
   const p0 = await pose(p);
@@ -176,6 +179,8 @@ try {
   await settle(mp);
   await mp.waitForTimeout(400);
   check(await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal overflow at 390 px');
+  const c2 = await mp.evaluate(() => { const el = document.getElementById('credit'), c = el.getBoundingClientRect(), d = document.getElementById('dock').getBoundingClientRect(); return { top: c.top, bottom: c.bottom, dockBottom: d.bottom, ih: innerHeight, clipped: el.scrollWidth > el.clientWidth, text: [...el.querySelectorAll('span')].filter((s) => getComputedStyle(s).display !== 'none').map((s) => s.textContent).join(' ') }; });
+  check(c2.bottom <= c2.ih && c2.top >= c2.dockBottom - 1 && !c2.clipped && /OpenStreetMap contributors/.test(c2.text), `on the phone the short attribution is visible under the dock, not clipped: "${c2.text}"`);
   const tiny = await mp.evaluate(() => [...document.querySelectorAll('#dock .dk, #touch .hold')].map((b) => { const r = b.getBoundingClientRect(); return [b.getAttribute('aria-label'), Math.round(r.width), Math.round(r.height)]; }).filter(([, w, h]) => w < 44 || h < 44));
   check(tiny.length === 0, 'every dock / touch button is at least 44 x 44 px' + (tiny.length ? ': ' + JSON.stringify(tiny) : ''));
   check(await mp.evaluate(() => document.body.classList.contains('touchy') || matchMedia('(pointer: coarse)').matches), 'touch UI is active on the phone');

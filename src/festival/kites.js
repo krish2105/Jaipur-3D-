@@ -85,7 +85,7 @@ export class KiteSim {
     this.phase[i] = rng() * 6.28;
     this.len[i] = 45 + rng() * 75;
     this.pay[i] = 0.6;
-    this.size[i] = 1.05 + rng() * 0.55; // ~0.5-0.75 m across: a large patang
+    this.size[i] = 1.35 + rng() * 0.6; // ~0.62-0.9 m across: a large patang (reviewers found the kites too small to read)
     this.palette[i * 2] = Math.floor(rng() * 12);
     this.palette[i * 2 + 1] = Math.floor(rng() * 12);
     const wd = Math.hypot(this.windX, this.windZ) || 1;

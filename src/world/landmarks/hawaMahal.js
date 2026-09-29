@@ -57,6 +57,24 @@ function cornerBay(b, tx, y, tz, h) {
   b.cyl(tx, y + h + 1.1, tz, 0.05, 0.02, 0.7, 6, COL.gold, false);
 }
 
+/**
+ * Festival outline lights in the model's local frame (x along the facade, y up, +z toward the street): a string of bulbs along the top edge of every storey
+ * and a row of diyas along the plinth. Positions follow the same width / storey constants as the geometry, so they always sit on the modelled edges.
+ * @returns {{bulbs:number[][], diyas:number[][]}} [x, y, z] points
+ */
+export function hawaOutline() {
+  const bulbs = [], diyas = [];
+  let y = PLINTH + 0.35;
+  for (let f = 0; f < 5; f++) {
+    const W = WIDTH[f], zf = -0.5 * f;
+    const top = y + FLOOR_H + 0.55 + 0.45; // just above the parapet, along the merlons
+    for (let x = -W / 2 + 0.3; x <= W / 2 - 0.29; x += 0.62) bulbs.push([x, top, zf + 0.2]);
+    y += FLOOR_H;
+  }
+  for (let x = -WIDTH[0] / 2 + 1; x <= WIDTH[0] / 2 - 0.9; x += 1.05) diyas.push([x, 0.08, 1.4]);
+  return { bulbs, diyas };
+}
+
 export function buildHawaMahal(heroMat, propMat) {
   const g = new THREE.Group();
   g.name = 'HawaMahal';
