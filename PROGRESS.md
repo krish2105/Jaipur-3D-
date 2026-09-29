@@ -8,7 +8,7 @@ Living log. A resumed session should read this first.
 |---|---|---|
 | 1 | Scaffold, Vite build, perf overlay, tier detection | done |
 | 2 | Data pipeline (Overpass + terrain, baking, chunking) | terrain: **done** (2.6 MB baked); OSM fetch+bake scripts done and unit-tested, **data BLOCKED** (see below) |
-| 3 | Terrain, streets, OSM buildings, real-metre facades | pending |
+| 3 | Terrain, streets, OSM buildings, real-metre facades | **code done + verified on synthetic lab district**; real-city output waits on OSM data |
 | 4 | Hand-modelled landmarks, Amer/Nahargarh silhouettes | pending |
 | 5 | Sky, sun, moon, materials, time of day | pending |
 | 6 | Weather | pending |
@@ -56,6 +56,19 @@ domain is reachable. The app shows an on-screen notice while the OSM chunks are 
   +-14 % deterministic jitter). `building:part` children replace their outline. Multipolygon relations stitched; holes assigned.
 - Unit tests (`npm test`) use `tests/fixtures/overpass-synthetic.mjs`: a SYNTHETIC fixture in the Overpass `out geom` shape. It is test-only and is never baked.
 - `npm run check:data` enforces the ~30 MB budget.
+
+## Phase 3 notes
+
+- Terrain: geometry-clipmap rings (8 rings, tier-scaled grid), heights fetched in the vertex shader from baked half-float textures; normals + Aravalli
+  rock/scrub/soil albedo in the fragment shader; Man Sagar water body from a baked flat-SRTM mask. Rings overlap by one coarse cell + polygon offset.
+- Buildings: hand extrusion in `src/world/buildingGeometry.js` (walls with u/v in real metres, courtyard holes, parapets, cornices, mumtys, black
+  water tanks, domes/pyramids, jharokha + chhatri instance lists). Winding verified by unit tests (`tests/building-geometry.test.mjs`).
+- Facade shader `src/world/facadeMaterial.js`: per-building palette (salmon/rose/ochre/lime/cream/grey), weathering, soot, streaks, plaster loss,
+  arched shopfront arcades + signboards + shutters on street-facing bazaar walls, cusped-arch windows, lit windows at night, distance-faded detail.
+- Streaming: `src/world/city.js` (500 m tiles, worker-built, LOD by distance, instance pools). Tile worker gets the height arrays so buildings sit on terrain.
+- **Renderer lab**: `npm run build:lab` builds `dist-lab/` with `VITE_LAB=1`, which swaps the network source for an in-memory bake of
+  `tests/fixtures/synthetic-district.mjs` (an imaginary bazaar quarter; clearly labelled on screen, never in the production bundle, never in `public/data`).
+  It exercises the *same* bake -> worker -> mesh -> shader path the real data will take.
 
 ## Known shortfalls
 

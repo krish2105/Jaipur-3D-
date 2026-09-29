@@ -98,6 +98,80 @@ const toU16 = (f) => {
 
 const bytes = (u16) => Buffer.from(u16.buffer, u16.byteOffset, u16.byteLength);
 
+
+const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/** separable box blur, radius r (texels), edge-clamped */
+function boxBlur(src, n, r) {
+  const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+  const w = 2 * r + 1;
+  for (let j = 0; j < n; j++) {
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += src[j * n + Math.max(0, Math.min(n - 1, k))];
+    for (let i = 0; i < n; i++) {
+      tmp[j * n + i] = acc / w;
+      acc += src[j * n + Math.min(n - 1, i + r + 1)] - src[j * n + Math.max(0, i - r)];
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += tmp[Math.max(0, Math.min(n - 1, k)) * n + i];
+    for (let j = 0; j < n; j++) {
+      out[j * n + i] = acc / w;
+      acc += tmp[Math.min(n - 1, j + r + 1) * n + i] - tmp[Math.max(0, j - r) * n + i];
+    }
+  }
+  return out;
+}
+
+/**
+ * SRTM is a surface model: buildings/trees leave +-several m of noise on the city plain.
+ * Smooth it there only (low slope, low elevation, near the city); ridges and hills are left untouched.
+ */
+function smoothCityPlain(H, n, texel, half) {
+  let B = H;
+  for (let i = 0; i < 3; i++) B = boxBlur(B, n, 10);
+  let changed = 0;
+  for (let j = 1; j < n - 1; j++)
+    for (let i = 1; i < n - 1; i++) {
+      const x = -half + (i + 0.5) * texel, z = -half + (j + 0.5) * texel;
+      const d = Math.hypot(x, z);
+      if (d > 3800) continue;
+      const gx = (B[j * n + i + 1] - B[j * n + i - 1]) / (2 * texel), gz = (B[(j + 1) * n + i] - B[(j - 1) * n + i]) / (2 * texel);
+      const slope = Math.hypot(gx, gz);
+      const w = (1 - smoothstep(2400, 3800, d)) * (1 - smoothstep(0.03, 0.1, slope)) * (1 - smoothstep(465, 490, B[j * n + i]));
+      if (w > 0.001) { H[j * n + i] += (B[j * n + i] - H[j * n + i]) * w; changed++; }
+    }
+  return changed;
+}
+
+/** Flood-fill the flat water body around (sx, sz): texels within tol of the lake level and locally flat. */
+function lakeMask(H, n, texel, half, level, sx, sz) {
+  const mask = new Uint8Array(n * n);
+  const idx = (i, j) => j * n + i;
+  const si = Math.round((sx + half) / texel - 0.5), sj = Math.round((sz + half) / texel - 0.5);
+  const ok = (i, j) => {
+    if (i < 1 || j < 1 || i >= n - 1 || j >= n - 1) return false;
+    const h = H[idx(i, j)];
+    return Math.abs(h - level) < 0.35 && Math.abs(H[idx(i + 1, j)] - h) < 0.25 && Math.abs(H[idx(i, j + 1)] - h) < 0.25;
+  };
+  const stack = [[si, sj]];
+  // seed: nearest ok texel to the start
+  let found = false;
+  for (let r = 0; r < 40 && !found; r++)
+    for (let dj = -r; dj <= r && !found; dj++)
+      for (let di = -r; di <= r && !found; di++) if (ok(si + di, sj + dj)) { stack.length = 0; stack.push([si + di, sj + dj]); found = true; }
+  let count = 0;
+  while (stack.length) {
+    const [i, j] = stack.pop();
+    if (!ok(i, j) || mask[idx(i, j)]) continue;
+    mask[idx(i, j)] = 255;
+    count++;
+    stack.push([i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]);
+  }
+  return { mask, count };
+}
+
 async function main() {
   await mkdir(OUT, { recursive: true });
   const NEAR = { z: 13, halfM: 8000, size: 1024, chunks: 4 };
@@ -105,6 +179,8 @@ async function main() {
 
   console.log('near grid');
   const near = await bakeGrid(NEAR);
+  const smoothed = smoothCityPlain(near.out, NEAR.size, near.step, NEAR.halfM);
+  console.log('  city plain smoothed texels:', smoothed);
   console.log('far grid');
   const far = await bakeGrid(FAR);
 
@@ -145,7 +221,19 @@ async function main() {
       }
     }
   const lakeMode = [...hist.entries()].sort((a, b) => b[1] - a[1])[0];
+  let lakeInfo = null;
+  if (lakeMode) {
+    const lm = lakeMask(near.out, NEAR.size, near.step, NEAR.halfM, +lakeMode[0], jm.x, jm.z);
+    // bit-pack (1 bit / texel), row-major, LSB first
+    const packed = Buffer.alloc(Math.ceil(NEAR.size * NEAR.size / 8));
+    for (let k = 0; k < lm.mask.length; k++) if (lm.mask[k]) packed[k >> 3] |= 1 << (k & 7);
+    await writeFile(path.join(OUT, 'lake.bits'), packed);
+    total += packed.length;
+    lakeInfo = { file: 'lake.bits', texels: lm.count, areaKm2: +(lm.count * near.step * near.step / 1e6).toFixed(2), format: '1 bit/texel, near-grid layout, LSB first' };
+    console.log('  lake mask:', JSON.stringify(lakeInfo));
+  }
   const manifest = {
+    lake: lakeInfo,
     lakeLevel: lakeMode ? +lakeMode[0] : null,
     lakeLevelNote: 'modal value of perfectly flat SRTM texels within 1.5 km of Jal Mahal (SRTM water bodies are flat)',
     format: 'uint16-le height*20 (m), row-major, row0=north, col0=west',

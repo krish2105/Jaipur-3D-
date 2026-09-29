@@ -10,3 +10,4 @@ data-raw/
 .cache/
 test-results/
 shots-tmp/
+dist-lab/

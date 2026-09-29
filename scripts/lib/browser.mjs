@@ -31,10 +31,11 @@ export async function launch(extraArgs = []) {
 }
 
 /** Start `vite preview` on dist/ (build first) and resolve with {url, stop}. */
-export async function startPreview(port = 4173) {
-  const p = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
+export async function startPreview(port = 4173, dir = process.env.PREVIEW_DIR || 'dist') {
+  const p = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--outDir', dir, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
   p.unref();
   const url = `http://127.0.0.1:${port}/`;
+  p.on('exit', (code) => { if (code) console.error(`preview server exited with ${code} (port ${port} busy?)`); });
   await new Promise((resolve, reject) => {
     const t0 = Date.now();
     const tick = () => {

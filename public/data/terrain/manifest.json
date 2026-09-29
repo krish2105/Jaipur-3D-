@@ -1,4 +1,10 @@
 {
+ "lake": {
+  "file": "lake.bits",
+  "texels": 1843,
+  "areaKm2": 0.45,
+  "format": "1 bit/texel, near-grid layout, LSB first"
+ },
  "lakeLevel": 411,
  "lakeLevelNote": "modal value of perfectly flat SRTM texels within 1.5 km of Jal Mahal (SRTM water bodies are flat)",
  "format": "uint16-le height*20 (m), row-major, row0=north, col0=west",
@@ -32,5 +38,5 @@
    "mean": 395.1
   }
  },
- "bakedAt": "2026-09-29T09:10:21.953Z"
+ "bakedAt": "2026-09-29T09:26:29.122Z"
 }

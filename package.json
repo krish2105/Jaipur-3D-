@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:lab": "VITE_LAB=1 vite build --outDir dist-lab",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "bake:terrain": "node scripts/bake-terrain.mjs",
     "fetch:osm": "node scripts/fetch-osm.mjs",
